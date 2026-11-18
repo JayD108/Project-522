@@ -44,6 +44,17 @@ Tip: press **Copy report** in the probe after each test and paste the JSON into 
 - [ ] Repeat from 1–2 other rooms/floors (subnet check)
 - [ ] Reboot the laptop. Is the server back without you doing anything? (`systemctl --user status jharokha-probe`)
 
+## F. The real app (Week 1)
+- [ ] `http://localhost:8080/app/`, then install it (Chrome menu > Cast, save and share > Install page as app)
+- [ ] Import the 3 encoded clips. AV1 should be refused and HEVC should show ⚠
+- [ ] Plug in the monitor and press **Start**. Note which of these happened:
+  - (a) both screens light up from one click, or
+  - (b) the banner "One more tap to light up the monitor" appears (fullscreen used up the click)
+- [ ] ⇄ Swap ×10: smooth, < 1 s. "Disk" in the Wallpaper engine card stays at the same count
+- [ ] Open `/app/?debug` for the HUD and the **Auto-swap ×50** button
+- [ ] Unplug the monitor: the laptop takes the wallpaper (no disk read). Replug it: the "Monitor connected" banner appears
+- [ ] Reboot with "Restore apps: Always". Does Jharokha come back? Count the taps to get to full dual-screen
+
 ## Results
 | Check | Result | Notes |
 |---|---|---|
@@ -54,3 +65,5 @@ Tip: press **Copy report** in the probe after each test and paste the JSON into 
 | Auto-yield under Netflix | | |
 | Phone reaches server | | |
 | Server back after reboot | | |
+| Start: one click or two (F) | | |
+| App swap ms (median / max) | | |

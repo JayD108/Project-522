@@ -239,13 +239,15 @@ function indexOfAscii(hay, str) {
 }
 
 /** Synthetic test clip (VP9 WebM via MediaRecorder) so the probe works with no files. */
-export async function generateTestClip({ width = 1280, height = 720, seconds = 8, fps = 30, onProgress } = {}) {
+export async function generateTestClip({ width = 1280, height = 720, seconds = 8, fps = 30, keyframeMs = 2000, onProgress } = {}) {
   const c = document.createElement('canvas');
   c.width = width; c.height = height;
   const g = c.getContext('2d');
   const stream = c.captureStream(fps);
   const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m));
-  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6e6 });
+  // keyframe every 2 s like tools/encode.sh (-g 2*fps); without it MediaRecorder emits ~1 keyframe,
+  // and every mid-clip start must decode from frame 0.
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6e6, videoKeyFrameIntervalDuration: keyframeMs });
   const chunks = [];
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
   const done = once(rec, 'stop');

@@ -19,6 +19,11 @@ fi
 echo "==> node $(node -v)"
 node -e 'require("node:sqlite")' 2>/dev/null && echo "==> node:sqlite OK" || echo "!! node:sqlite missing: need Node >= 22.13"
 
+echo "==> Building the app (app/dist, served at /app/)"
+sudo apt-get install -y ffmpeg >/dev/null 2>&1 || echo "   (ffmpeg not installed: tools/encode.sh will not work)"
+( cd "$REPO/app" && npm ci --no-audit --no-fund && npm run build )
+[ -f "$REPO/probe/clips/test_1080p30.mp4" ] || bash "$REPO/tools/make-test-clips.sh" || true
+
 echo "==> Installing systemd --user unit"
 mkdir -p "$HOME/.config/systemd/user" "$HOME/.local/share/jharokha"
 sed -e "s#@REPO@#${REPO}#g" -e "s#@NODE@#$(command -v node)#g" \
@@ -31,10 +36,12 @@ systemctl --user --no-pager status jharokha-probe.service | head -n 5 || true
 cat <<EOF
 
 Done. Next (manual, in ChromeOS):
-  1. Chrome on the laptop: open http://localhost:8080/
+  1. Chrome on the laptop: open http://localhost:8080/app/  (Week 0 probe: http://localhost:8080/)
+     Install it: Chrome menu > Cast, save and share > Install page as app
   2. Settings > About ChromeOS > Linux development environment > Port forwarding
      > Add: port 8080, TCP. Toggle it ON.
   3. Find the laptop's Wi-Fi IP: Settings > Network > (your Wi-Fi) > IP address
   4. Friend's phone on the same Wi-Fi: http://<that-ip>:8080/lan.html
 Logs: journalctl --user -u jharokha-probe -f
+Update later: git pull && (cd app && npm ci && npm run build) && systemctl --user restart jharokha-probe
 EOF

@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', 'probe');
+const APP_ROOT = path.resolve(HERE, '..', 'app', 'dist'); // built PWA (cd app && npm run build)
 const CLIPS = path.join(ROOT, 'clips');
 const DATA_DIR = process.env.JHK_DATA || path.resolve(HERE, '..', 'data');
 const PORT = Number(process.env.PORT || 8080);
@@ -110,17 +111,19 @@ function listClips() {
 const SPEED_CHUNK = Buffer.alloc(1 << 20);
 for (let i = 0; i < SPEED_CHUNK.length; i++) SPEED_CHUNK[i] = (i * 2654435761) >>> 24;
 
-function serveStatic(req, res, urlPath) {
-  let rel = decodeURIComponent(urlPath);
+function serveStatic(req, res, urlPath, root = ROOT) {
+  let rel;
+  try { rel = decodeURIComponent(urlPath); } catch { return send(res, 400, 'bad path'); }
   if (rel.endsWith('/')) rel += 'index.html';
-  const file = path.resolve(ROOT, '.' + rel);
-  if (!file.startsWith(ROOT + path.sep) && file !== ROOT) return send(res, 403, 'forbidden');
+  const file = path.resolve(root, '.' + rel);
+  if (!file.startsWith(root + path.sep)) return send(res, 403, 'forbidden');
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) return send(res, 404, 'not found');
     res.writeHead(200, {
       'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream',
       'content-length': st.size,
-      'cache-control': 'no-cache',
+      // The service worker script must never be cached by the browser's HTTP cache.
+      'cache-control': path.basename(file) === 'sw.js' ? 'no-store' : 'no-cache',
     });
     if (req.method === 'HEAD') return res.end();
     fs.createReadStream(file).pipe(res);
@@ -143,13 +146,15 @@ const server = http.createServer((req, res) => {
     const pump = () => { while (left > 0) { left--; if (!res.write(SPEED_CHUNK)) return res.once('drain', pump); } res.end(); };
     return pump();
   }
+  if (p === '/app') { res.writeHead(301, { location: '/app/' }); return res.end(); }
+  if ((req.method === 'GET' || req.method === 'HEAD') && p.startsWith('/app/')) return serveStatic(req, res, p.slice(4), APP_ROOT);
   if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(req, res, p);
   send(res, 405, 'method not allowed');
 });
 
 server.listen(PORT, HOST, () => {
   console.log(`jharokha-probe listening on http://${HOST}:${PORT}  (node ${process.version})`);
-  console.log(`  on this machine : http://localhost:${PORT}/`);
+  console.log(`  on this machine : http://localhost:${PORT}/app/   (probe: /)`);
   for (const a of lanAddrs()) console.log(`  ${a.iface.padEnd(15)} : http://${a.addr}:${PORT}/lan.html`);
   console.log('  (inside Crostini these are VM addresses; phones use the ChromeOS Wi-Fi IP after port forwarding)');
   console.log(`  sqlite: ${JSON.stringify(sqliteInfo)}`);
