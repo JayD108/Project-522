@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jharokha Probe</title>
+<link rel="stylesheet" href="probe.css">
+</head>
+<body>
+<!-- Layer 1: video lives here (two <video> elements stacked by loop.js) -->
+<div id="stage"></div>
+<div id="hud" class="hud hidden"></div>
+
+<!-- Layer 2 / setup panel, drawn over the stage -->
+<main id="panel" class="panel">
+  <header class="bar">
+    <h1>Jharokha <span class="muted">probe · Week 0</span></h1>
+    <span id="roleTag" class="tag"></span>
+    <span id="linkTag" class="tag">peer: —</span>
+    <span id="srvTag" class="tag">server: —</span>
+  </header>
+
+  <section id="setup" class="grid">
+    <div class="card">
+      <h2>1 · Video into RAM</h2>
+      <p class="muted">Read once from disk → Blob in RAM. H.264 / VP9 only.</p>
+      <label class="btn">Pick file… <input id="file" type="file" accept="video/mp4,video/webm" hidden></label>
+      <select id="clipSel"><option value="">server clips…</option></select>
+      <button id="genBtn">Generate test clip</button>
+      <p id="clipInfo" class="mono">no clip loaded</p>
+    </div>
+
+    <div class="card">
+      <h2>2 · Screens</h2>
+      <button id="detectBtn">Detect screens</button>
+      <div id="screens" class="mono muted">not detected</div>
+      <label>Wallpaper (Layer 1) on: <select id="wallScreen"></select></label>
+    </div>
+
+    <div class="card">
+      <h2>3 · Start</h2>
+      <button id="startDual" class="primary" disabled>Start dual-screen (fullscreen)</button>
+      <button id="startWindowed" disabled>Start 2 windows, no fullscreen</button>
+      <button id="startSingle" disabled>Single-screen loop test</button>
+      <label class="small"><input id="fsPopup" type="checkbox" checked> try <code>fullscreen</code> popup feature</label>
+      <p class="muted small">Keys: <b>S</b> swap · <b>F</b> fullscreen · <b>H</b> HUD · <b>P</b> pause</p>
+    </div>
+
+    <div class="card">
+      <h2>Decoder support (this device)</h2>
+      <table id="codecTbl" class="mono small"></table>
+    </div>
+  </section>
+
+  <section id="vitals" class="grid hidden">
+    <div class="card">
+      <h2>⇄ Swap</h2>
+      <button id="swapBtn" class="primary big">⇄ SWAP</button>
+      <button id="autoBtn">Auto-swap ×50</button>
+      <div id="swapInfo" class="mono">no swaps yet</div>
+    </div>
+    <div class="card">
+      <h2>Layer 1 loop (other screen)</h2>
+      <div id="loopInfo" class="mono">waiting for stats…</div>
+    </div>
+    <div class="card">
+      <h2>This window</h2>
+      <div id="selfInfo" class="mono"></div>
+      <button id="fsBtn">Fullscreen here</button>
+    </div>
+    <div class="card">
+      <h2>Server</h2>
+      <div id="srvInfo" class="mono">—</div>
+      <label class="small">base URL <input id="srvBase" size="28"></label>
+    </div>
+  </section>
+
+  <section class="card log">
+    <h2>Log <button id="copyBtn" class="small">Copy report</button></h2>
+    <pre id="log"></pre>
+  </section>
+</main>
+
+<div id="tapFs" class="tapfs hidden"><button>Tap to go fullscreen on this screen</button></div>
+
+<script type="module" src="probe.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+[Unit]
+Description=Jharokha Week 0 probe server (port 8080)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO@
+ExecStart=@NODE@ @REPO@/server/probe-server.mjs
+Environment=PORT=8080
+Environment=HOST=0.0.0.0
+Environment=JHK_DATA=%h/.local/share/jharokha
+Restart=on-failure
+RestartSec=2
+# Keep the HDD quiet: journald only, no log files.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jharokha LAN Check</title>
+<style>
+  :root { --bg:#0d0c0b; --card:#1b1916; --ink:#f1e9dc; --muted:#9a9083; --accent:#e0a458; --ok:#7fbf7f; --bad:#e0705a; color-scheme: dark; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--ink); font:16px/1.45 system-ui,sans-serif; }
+  h1 { font-size:22px; margin:0 0 4px; } .muted { color:var(--muted); }
+  .card { background:var(--card); border-radius:10px; padding:14px; margin:12px 0; }
+  .big { font-size:28px; font-weight:700; } .ok { color:var(--ok); } .bad { color:var(--bad); }
+  button { font:inherit; padding:12px 18px; border-radius:8px; border:0; background:var(--accent); color:#1a1208; font-weight:600; margin:4px 6px 4px 0; }
+  pre { white-space:pre-wrap; font:13px/1.5 ui-monospace,monospace; margin:0; }
+</style>
+</head>
+<body>
+<h1>Jharokha · LAN check</h1>
+<p class="muted">Open this on a friend's phone on the hostel Wi-Fi. If this page loads at all, client isolation is <b>not</b> blocking you.</p>
+
+<div class="card"><div id="status" class="big">checking…</div><pre id="who"></pre></div>
+<div class="card">
+  <button id="pingBtn">Ping ×20</button>
+  <button id="speedBtn">Speed test 10 MB</button>
+  <pre id="out"></pre>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const out = (s) => { $('out').textContent = s + '\n' + $('out').textContent; };
+
+async function health() {
+  try {
+    const h = await (await fetch('/health', { cache: 'no-store' })).json();
+    $('status').textContent = '✓ server reachable'; $('status').className = 'big ok';
+    $('who').textContent = `reached via ${h.reachedVia}\nserver sees you as ${h.youAre}\nserver: ${h.hostname} · up ${h.uptimeS} s · ${h.activeClients60s} device(s) in last minute`;
+  } catch (e) {
+    $('status').textContent = '✗ server not reachable'; $('status').className = 'big bad';
+  }
+}
+
+$('pingBtn').onclick = async () => {
+  const r = [];
+  for (let i = 0; i < 20; i++) {
+    const t = performance.now();
+    try { await fetch('/ping', { cache: 'no-store' }); r.push(performance.now() - t); } catch {}
+  }
+  r.sort((a, b) => a - b);
+  if (!r.length) return out('ping: all failed');
+  const avg = r.reduce((a, b) => a + b, 0) / r.length;
+  out(`ping ${r.length}/20 · min ${r[0].toFixed(0)} · avg ${avg.toFixed(0)} · p95 ${r[Math.floor(r.length * 0.95) - 1 || 0].toFixed(0)} ms`);
+};
+
+$('speedBtn').onclick = async () => {
+  const t = performance.now();
+  try {
+    const b = await (await fetch('/speed?mb=10', { cache: 'no-store' })).arrayBuffer();
+    const s = (performance.now() - t) / 1000;
+    out(`download ${(b.byteLength / 2 ** 20).toFixed(0)} MB in ${s.toFixed(2)} s = ${((b.byteLength * 8) / s / 1e6).toFixed(1)} Mbit/s`);
+  } catch (e) { out('speed test failed: ' + e.message); }
+};
+
+health(); setInterval(health, 5000);
+</script>
+</body>
+</html>
