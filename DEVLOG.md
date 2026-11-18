@@ -41,3 +41,20 @@
 **Notes**: npm audit reports high advisories in picomatch/minimatch. These are build-time globbing only, nothing ships to the app, and no fix exists yet.
 
 **Next**: Week 2: auto-yield (release the Blob after 2 min hidden), 🎬 Cinema, Night Watch, scene scheduler, prefetch, clock and weather.
+
+## 2026-11-18 · Consolidation: one runnable pipeline + one test log
+Week 2 was paused (it hadn't started) to make Weeks 0–1 runnable from end to end.
+
+**Audit (built vs stubbed)**
+- Stub removed: the 🎬 Cinema button (it was disabled with "Week 2"). Cinema comes back in Week 2 as a working feature.
+- Gap fixed: a fresh clone had no video to play. Added `samples/` (2 synthetic clips, 1.7 MB, H.264 + VP9) and a **Load sample wallpapers** button, served from `/api/samples` and `/samples/`.
+- Gap fixed: no single command. `npm start` (`scripts/start.mjs`) checks Node, installs app deps if missing, builds, then starts the server. `start.sh` wraps it on Linux. `npm run dev` adds Vite hot reload, proxied to the server.
+- Gap fixed: deleting the playing wallpaper was unguarded. It is now refused while playing, and deleting the current choice picks the next one.
+- Gap fixed: the server now loads an optional `.env`, gives a clear message when the port is in use, answers 503 "App not built yet" if `app/dist` is missing, and only prints LAN URLs when HOST=0.0.0.0.
+- Not stubs, by design: "Temp / fan: n/a" (ChromeOS doesn't expose these, per v2 §2).
+
+**Tests**: `npm test` → `tests/run-all.mjs` → ONE log, `test-run-<local timestamp>.log`, with 7 sections: environment and deps, build, unit tests, server (including `npm start` itself), real playback in the video engine, single-screen fallback, dual-screen swap. Replaces `app/e2e/smoke.mjs`. A broken check is recorded as FAIL with a one-line reason, and the run continues.
+- Found: headless Chrome's `getVideoPlaybackQuality().droppedVideoFrames` reads ~95 % in every window type while rVFC sees 30 fps. It's a headless artefact, reported but not gated; fps, hitches and seam are the gates.
+- Result: 63/63 PASS in ~56 s on Windows / Chrome 157.
+
+**Repo hygiene**: `.gitignore` extended (`.env*`, build output, DB/WAL files, logs and test logs, OS/editor junk). `.env.example` added (PORT, HOST, JHK_DATA; no secrets exist). The secret scan found nothing. `SETUP.md` covers Windows dev and ChromeOS/Crostini.

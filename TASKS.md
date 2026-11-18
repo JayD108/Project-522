@@ -32,9 +32,12 @@
 - [x] W-A/W-B window manager, Layer 1 / Layer 2 rendering (compact vs wall layout), ⇄ SWAP, hotplug `screenschange` → single-screen fallback from W-A's RAM Blob, "monitor connected" banner
 - [x] Wake lock (re-requested on visibilitychange), Start screen, "Tap to fill this screen" on W-B, auto-pause when hidden
 - [x] Settings in IndexedDB, batched (5 min + hide + pagehide)
-- [x] Headless e2e (`app/e2e/smoke.mjs`, 2 emulated screens): 50/50 swaps, median ~130 ms, max ~190 ms, 0 disk reads, heap flat, no leaked videos. 19/19 checks pass
+- [x] Headless e2e (now `tests/run-all.mjs`, 2 emulated screens): 50/50 swaps, median ~130 ms, max ~190 ms, 0 disk reads, heap flat, no leaked videos. 19/19 checks pass
 - [ ] **On the device:** does fullscreen + popup work in ONE click, or does it take the second-tap banner? (DEVICE-CHECKS §F)
 - Done when: swap < 1 s with zero disk reads, and 50 swaps without a leak ✅ (headless; confirm on the device)
+
+### Consolidation (18 Nov) ✅
+- [x] One command (`npm start`), sample clips, `npm test` → single `test-run-*.log` (63 checks), SETUP.md, repo cleaned for GitHub
 
 ### Week 2 · Coexist (v2 W2 + v1 W3)
 - [ ] Auto-yield (when hidden: pause; after 2 min: release the Blob), 🎬 Cinema, Night Watch

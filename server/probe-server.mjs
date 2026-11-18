@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Jharokha Week 0 probe server — zero dependencies.
-// Run:  node server/probe-server.mjs          (PORT=8080 HOST=0.0.0.0 by default)
-// Serves probe/ as static files, plus /health /ping /speed /clips.
+// Jharokha local server (Week 0-1): zero dependencies, Node >= 22.13.
+// Run:  npm start   (or: node server/probe-server.mjs)   PORT=8080 HOST=0.0.0.0 by default, .env honoured.
+// Serves the built app at /app/, sample clips at /samples/, the Week 0 probe at /,
+// plus /health /ping /speed /clips /api/samples.  The real Fastify server replaces this in Week 3.
 // Meant to run inside Crostini; Chrome on ChromeOS reaches it at http://localhost:8080,
 // other LAN devices at http://<chromeos-wifi-ip>:8080 once port forwarding is on.
 
@@ -12,8 +13,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ENV_FILE = path.resolve(HERE, '..', '.env');
+if (fs.existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);   // optional local overrides, see .env.example
 const ROOT = path.resolve(HERE, '..', 'probe');
-const APP_ROOT = path.resolve(HERE, '..', 'app', 'dist'); // built PWA (cd app && npm run build)
+const APP_ROOT = path.resolve(HERE, '..', 'app', 'dist'); // built PWA (npm run build)
+const SAMPLES = path.resolve(HERE, '..', 'samples');
 const CLIPS = path.join(ROOT, 'clips');
 const DATA_DIR = process.env.JHK_DATA || path.resolve(HERE, '..', 'data');
 const PORT = Number(process.env.PORT || 8080);
@@ -99,13 +103,15 @@ function send(res, code, body, headers = {}) {
   res.end(isObj ? JSON.stringify(body) : body);
 }
 
-function listClips() {
+function listVideos(dir, prefix) {
   try {
-    return fs.readdirSync(CLIPS)
+    return fs.readdirSync(dir)
       .filter((f) => /\.(mp4|webm)$/i.test(f))
-      .map((f) => ({ name: f, url: `/clips/${encodeURIComponent(f)}`, bytes: fs.statSync(path.join(CLIPS, f)).size }));
+      .sort()
+      .map((f) => ({ name: f, url: `${prefix}/${encodeURIComponent(f)}`, bytes: fs.statSync(path.join(dir, f)).size }));
   } catch { return []; }
 }
+const listClips = () => listVideos(CLIPS, '/clips');
 
 // 1 MiB of incompressible-ish bytes, generated once and reused for /speed.
 const SPEED_CHUNK = Buffer.alloc(1 << 20);
@@ -139,6 +145,8 @@ const server = http.createServer((req, res) => {
   if (p === '/ping') return send(res, 200, { t: Date.now() });
   if (p === '/health') return send(res, 200, health(req));
   if (p === '/clips') return send(res, 200, listClips());
+  if (p === '/api/samples') return send(res, 200, listVideos(SAMPLES, '/samples'));
+  if ((req.method === 'GET' || req.method === 'HEAD') && p.startsWith('/samples/')) return serveStatic(req, res, p.slice(8), SAMPLES);
   if (p === '/speed') {
     const mb = Math.min(Math.max(Number(url.searchParams.get('mb')) || 5, 1), 100);
     res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': mb << 20, 'cache-control': 'no-store', 'access-control-allow-origin': '*' });
@@ -147,16 +155,27 @@ const server = http.createServer((req, res) => {
     return pump();
   }
   if (p === '/app') { res.writeHead(301, { location: '/app/' }); return res.end(); }
-  if ((req.method === 'GET' || req.method === 'HEAD') && p.startsWith('/app/')) return serveStatic(req, res, p.slice(4), APP_ROOT);
+  if ((req.method === 'GET' || req.method === 'HEAD') && p.startsWith('/app/')) {
+    if (!fs.existsSync(path.join(APP_ROOT, 'index.html'))) return send(res, 503, 'App not built yet: run `npm run build` (or `npm start`, which builds it).');
+    return serveStatic(req, res, p.slice(4), APP_ROOT);
+  }
   if (req.method === 'GET' || req.method === 'HEAD') return serveStatic(req, res, p);
   send(res, 405, 'method not allowed');
+});
+
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') console.error(`Port ${PORT} is already in use. Stop the other server or set PORT=<free port> (see .env.example).`);
+  else console.error(e);
+  process.exit(1);
 });
 
 server.listen(PORT, HOST, () => {
   console.log(`jharokha-probe listening on http://${HOST}:${PORT}  (node ${process.version})`);
   console.log(`  on this machine : http://localhost:${PORT}/app/   (probe: /)`);
-  for (const a of lanAddrs()) console.log(`  ${a.iface.padEnd(15)} : http://${a.addr}:${PORT}/lan.html`);
-  console.log('  (inside Crostini these are VM addresses; phones use the ChromeOS Wi-Fi IP after port forwarding)');
+  if (HOST === '0.0.0.0') {
+    for (const a of lanAddrs()) console.log(`  ${a.iface.padEnd(15)} : http://${a.addr}:${PORT}/lan.html`);
+    console.log('  (inside Crostini these are VM addresses; phones use the ChromeOS Wi-Fi IP after port forwarding)');
+  }
   console.log(`  sqlite: ${JSON.stringify(sqliteInfo)}`);
 });
 

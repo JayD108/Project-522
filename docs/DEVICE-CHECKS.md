@@ -11,7 +11,8 @@ Tip: press **Copy report** in the probe after each test and paste the JSON into 
 - [ ] ChromeOS Flex fully updated. Note the version from `chrome://version`.
 - [ ] `chrome://gpu`: "Video Decode: Hardware accelerated". Screenshot it.
 - [ ] Linux turned on: Settings > About ChromeOS > Linux development environment.
-- [ ] In the Linux terminal: `git clone <repo>` (or copy the folder), then `cd livewallpaper && bash scripts/setup-crostini.sh`
+- [ ] In the Linux terminal: follow SETUP.md (b). In short: install Node 22, `git clone`, `npm start` (or `bash scripts/setup-crostini.sh` for auto-start)
+- [ ] `npm run test:quick` inside Crostini: the log should show all PASS
 - [ ] Encode 3 test clips on the main PC: `tools/encode.sh in.mp4` (1080p30), plus one 1440p60 variant for the Legion. Copy them into `probe/clips/`.
 
 ## B. Loop smoothness (single screen)

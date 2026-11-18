@@ -1,10 +1,41 @@
+# dependencies
 node_modules/
+
+# build output
+app/dist/
+app/dev-dist/
+dist/
+build/
+*.tsbuildinfo
+
+# local config / secrets (copy .env.example → .env)
+.env
+.env.*
+!.env.example
+
+# local data: SQLite DB and its WAL files
 data/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+*.db
+
+# big local test clips (small committed samples live in samples/)
 probe/clips/*
 !probe/clips/README.md
+
+# test reports (bring the newest one back for review; don't commit them)
+test-run-*.log
+coverage/
+
+# logs
+*.log
+npm-debug.log*
+
+# editors / OS junk
+.vscode/
+.idea/
+*.swp
 .DS_Store
-app/dist/
-app/dev-dist/
+Thumbs.db
+desktop.ini

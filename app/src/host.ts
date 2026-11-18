@@ -194,9 +194,29 @@ export async function importWallpapers(files: Iterable<File | Blob>, names?: str
   }
 }
 
+/** Import the sample clips the server ships in /samples/ (so a fresh install plays something). */
+export async function loadSamples(): Promise<number> {
+  let list: { name: string; url: string }[] = [];
+  try { list = await (await fetch(new URL('../api/samples', location.href), { cache: 'no-store' })).json(); }
+  catch { toast('Sample clips need the Jharokha server (npm start)', 8000); return 0; }
+  const have = new Set(library.value.map((w) => w.name));
+  const todo = list.filter((c) => !have.has(c.name));
+  if (!todo.length) { toast(list.length ? 'Samples already imported' : 'No sample clips on the server'); return 0; }
+  const blobs = await Promise.all(todo.map(async (c) => (await fetch(new URL('..' + c.url, location.href))).blob()));
+  await importWallpapers(blobs, todo.map((c) => c.name));
+  return todo.length;
+}
+
 export async function deleteWallpaper(id: string) {
+  if (clip?.wp.id === id && started) { toast('That wallpaper is playing: pick another one first'); return; }
   await removeWallpaper(id);
+  if (clip?.wp.id === id) setClip(null);
   await refreshLibrary();
+  if (currentId.value === id) {
+    currentId.value = null;
+    updateSettings({ currentId: null });
+    if (library.value[0]) await selectWallpaper(library.value[0].id);
+  }
   send({ t: 'library-changed' });
 }
 
@@ -361,7 +381,7 @@ export async function init(stageEl: HTMLElement) {
   }, 2000);
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) player?.pause();       // auto-yield to Netflix etc. (2-min release lands in Week 2)
+    if (document.hidden) player?.pause();       // auto-yield to Netflix etc. (memory release after 2 min: Week 2)
     else { player?.resume(); if (started || ROLE === 'B') keepAwake(); }
   });
 
@@ -390,8 +410,8 @@ export async function init(stageEl: HTMLElement) {
   if (DEBUG) {
     (window as any).__jhk = {
       importBlob: (b: Blob, name: string) => importWallpapers([b], [name]),
-      LoopPlayer, select: selectWallpaper, swap: requestSwap, autoSwap, start, openMonitorWindow, flushSettings,
-      state: { layer, mode, peer, swaps, loopStats, diskReads, blobMB, library, needMonitorTap, lastTiming },
+      LoopPlayer, select: selectWallpaper, loadSamples, deleteWallpaper, swap: requestSwap, autoSwap, start, openMonitorWindow, flushSettings,
+      state: { layer, mode, peer, swaps, loopStats, diskReads, blobMB, library, needMonitorTap, lastTiming, overlayOpen, currentId, screensInfo },
     };
   }
 }

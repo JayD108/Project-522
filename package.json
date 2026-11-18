@@ -1,0 +1,16 @@
+{
+  "name": "jharokha",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live video wallpaper + dual-screen room host for a ChromeOS Flex laptop",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "setup": "npm --prefix app ci --no-audit --no-fund",
+    "build": "npm --prefix app run build",
+    "start": "node scripts/start.mjs",
+    "dev": "node scripts/start.mjs --dev",
+    "test": "node tests/run-all.mjs",
+    "test:quick": "node tests/run-all.mjs --no-browser"
+  }
+}

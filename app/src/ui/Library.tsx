@@ -1,5 +1,5 @@
 import { currentId, library } from '../state';
-import { deleteWallpaper, importWallpapers, selectWallpaper } from '../host';
+import { deleteWallpaper, importWallpapers, loadSamples, selectWallpaper } from '../host';
 import { codecVerdict } from '../engine/sniff';
 
 const mb = (b: number) => `${(b / 2 ** 20).toFixed(0)} MB`;
@@ -16,7 +16,12 @@ export function Library() {
             onChange={(e) => { const f = (e.target as HTMLInputElement).files; if (f) importWallpapers(Array.from(f)); (e.target as HTMLInputElement).value = ''; }} />
         </label>
       </div>
-      {list.length === 0 && <p class="muted">No wallpapers yet. Import an H.264 or VP9 clip (encode with <code>tools/encode.sh</code>).</p>}
+      {list.length === 0 && (
+        <p class="muted">
+          No wallpapers yet. Import an H.264 or VP9 clip (encode with <code>tools/encode.sh</code>), or{' '}
+          <button onClick={loadSamples}>Load sample wallpapers</button>
+        </p>
+      )}
       <ul class="wp-list">
         {list.map((w) => {
           const v = codecVerdict(w.codec);

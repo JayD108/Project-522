@@ -92,7 +92,6 @@ function Layer2() {
           <button class="primary big" onClick={requestSwap} disabled={swapping.value}>
             {single ? (overlayOpen.value ? '▣ Back to wallpaper' : '▣ Dashboard') : '⇄ Swap'}
           </button>
-          <button disabled title="Week 2">🎬 Cinema</button>
           <button onClick={toggleFullscreen}>⛶</button>
         </div>
       </header>

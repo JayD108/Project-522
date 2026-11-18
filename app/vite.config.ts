@@ -30,5 +30,9 @@ export default defineConfig({
       },
     }),
   ],
-  server: { port: 5173, strictPort: true },
+  // `npm run dev` (hot reload) proxies server routes to the Jharokha server on :8080 (npm start).
+  server: {
+    port: 5173, strictPort: true,
+    proxy: Object.fromEntries(['/api', '/samples', '/clips', '/health', '/ping', '/loop.js'].map((p) => [p, 'http://localhost:8080'])),
+  },
 });
