@@ -1,0 +1,8 @@
+<resources>
+    <!-- Compose draws everything; this only sets the window colours before the first frame (the bg colour in styles.css). -->
+    <style name="Theme.JharokhaOwner" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+    </style>
+</resources>

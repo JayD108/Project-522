@@ -115,6 +115,12 @@
 - [x] Bug fixes: shortcuts no longer fire while typing in a select / textarea or with Ctrl/Alt (Ctrl+S swapped screens); quick wallpaper picks no longer get lost or overwritten by a slower earlier read; the monitor window now knows which wallpaper is playing
 - Planned next (not built): restore a snapshot from the System tab (now a documented 1-line command in SETUP §6); per-scene rotation lists; a stable phone address for the Android app (ANDROID.md)
 
+### Android owner controller (19 Nov) ← built, waiting on a real phone
+- [x] Server: phone pairing QR (`POST /api/pair/phone`), `/api/pair` over the internet link, `GET /api/version`, dashboard "Pair my phone" button + test
+- [x] `android/`: native Kotlin + Compose owner app (pair, Home, Wall, Remote with volume keys, People, Tools); emulator end-to-end check (DEVLOG)
+- [ ] **On the device:** `npm test` on the laptop (the new pairing test needs the real tunnel path); pair a real Android phone from the dashboard; try the remote with the extension
+- [ ] Phase 2: foreground service + notifications, share sheet → wall, media notification (ANDROID.md §6)
+
 ## Every week, when it's done
 - Update `probe/updates.html` (newest week on top), then `npm run show`: it restarts the server and opens What's new + the app in ChromeOS Chrome on the laptop.
 

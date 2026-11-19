@@ -14,7 +14,7 @@ build/
 !.env.example
 
 # local data: SQLite DB and its WAL files
-data/
+/data/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm

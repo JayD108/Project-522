@@ -90,7 +90,7 @@ The phone side of Jharokha, made into a real app. The web page works, but a nati
 
 **Recommended: B (Capacitor) first, with native code where it matters.** Reuse the existing room UI unchanged. Add native pieces for: secure token storage, a foreground WebSocket service + notifications, the share target, volume keys → `media`/`app` volume, `upi://` intents, and QR pairing with the camera. If the remote needs to feel better later, rewrite just the remote screen in native Compose inside the same app.
 
-Decision still open (see §8). The plan below assumes B.
+**Decided 2026-11-19 (see §9): the first app is an owner-only controller, written native (Kotlin + Compose) in `android/`.** With one user and far fewer screens, a rewrite is small, and native code gives the best remote feel. Guests keep the web page. The Capacitor route stays open for a later guest app.
 
 ---
 
@@ -110,16 +110,17 @@ Phones reach the laptop only through a **quick tunnel whose URL changes on every
 
 ### Phase 0 · Prep (on the laptop repo)
 - [ ] Commit + push the current work (command in §1).
-- [ ] Decide: Capacitor vs native (§4), and the stable address (§5).
-- [ ] Add a versioned API marker: `GET /api/version` → `{api: 1, build}`, so the app can warn about mismatches.
-- [ ] Add **token auth by header** for the app: accept `Authorization: Bearer <token>` the same way as the `jhk_dev` cookie (WebSocket too, via a header or a `?t=` first message, never in logged URLs). Add tests.
-- [ ] Add an app pairing flow: a QR that also carries `{url, k}` (it already carries `?k=`); the app reads it with the camera.
+- [x] Decide: native owner app (§4). The stable address is still open (§5); for now the app re-reads the address from the room QR.
+- [x] Add a versioned API marker: `GET /api/version` → `{api: 1, build, server}` (members only). The app shows a warning on a mismatch.
+- [x] ~~Token auth by header~~: not needed. The app sends `Cookie: jhk_dev=<token>` itself on HTTP and on the `/ws` upgrade, so the server is unchanged.
+- [x] App pairing flow: dashboard Access card → "Pair my phone" → `POST /api/pair/phone` (owners) returns a QR of `jharokha://pair?u=<base>&c=<32 hex>` (one-time, 10 min, kv `pairPhone`, separate from the laptop's `npm run pair` code). `POST /api/pair` is now reachable over the internet link (the same-Wi-Fi rule and rate limit still apply). Test: tunnel section of `tests/run-all.mjs`.
 
-### Phase 1 · App skeleton
-- [ ] New folder `android/` (Capacitor project pointing at a phone build of `app/room.html`).
-- [ ] Join / approve / roles flow works in the app; token kept in `EncryptedSharedPreferences`.
-- [ ] Phone UI from `RoomApp.tsx` running inside; API base URL from the stored pairing, not `location`.
-- [ ] Builds: debug APK on a real Android phone (the user's friends use Android; the user's own phone is an iPhone, so iOS stays on the web page for now).
+### Phase 1 · Owner app ← built 2026-11-19 (see `android/README.md`)
+- [x] `android/`: Kotlin + Compose, package `com.jharokha.owner`, minSdk 29. Debug APK builds, 6/6 unit tests.
+- [x] Pairing (Google code scanner, so no CAMERA permission; also a deep link and a paste box). The token is AES-GCM encrypted with an Android Keystore key, and backups are off. Rescanning the room QR updates the address.
+- [x] Home (requests, wall, door, health) · Wall (screen modes, wallpapers, cast, send link) · Remote (D-pad, touchpad, player, typing, **volume keys**, haptics) · People (Wi-Fi rule, tunnel, kill switch, quiet hours, devices, audit) · Tools (alarm, timers, snapshot).
+- [x] Checked end to end on the emulator against a local server and a stand-in dashboard and extension: pair, approve a join, door sign, cinema, wallpaper next, OK and arrows, touchpad, volume keys 50→55→60→55, timer, kicked out → back to pairing, server restart → reconnects.
+- [ ] **On a real Android phone** (you): pair from the real laptop dashboard, over Wi-Fi and over the internet link.
 
 ### Phase 2 · Native features
 - [ ] Foreground service keeps `/ws` open while the app is in use; local notifications for `tools-ding`, the alarm ringing, join/cast requests (owners).
@@ -156,3 +157,4 @@ Phones reach the laptop only through a **quick tunnel whose URL changes on every
 
 ## 9. Decision log
 - 2026-11-19: Android app planned. This document was created. Nothing decided yet beyond the recommendation in §4.
+- 2026-11-19: **Scope: owner-only controller** (the user: "controller that only the owner will use"). **Native Kotlin + Compose** over Capacitor, with the code in `android/` of this repo. Stable address: not decided; re-scan the room QR for now. Phase 0 + Phase 1 built the same day.

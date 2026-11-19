@@ -167,20 +167,21 @@ export function createAccess(db, { trustedIps = ['127.0.0.1', '::1', '::ffff:127
   }
 
   // ---- pairing the laptop's Chrome (one-time code, 10 min, only obtainable from inside Linux)
-  function newPairCode(who) {
-    const code = crypto.randomBytes(5).toString('hex');
-    kvSet('pair', { hash: sha(code), exp: now() + PAIR_MS });
-    log(actorName(who), 'pair-code');
+  // A phone that will be the owner's controller app gets its own, longer code (it may travel over the internet link).
+  function newPairCode(who, { phone = false } = {}) {
+    const code = crypto.randomBytes(phone ? 16 : 5).toString('hex');
+    kvSet(phone ? 'pairPhone' : 'pair', { hash: sha(code), exp: now() + PAIR_MS });
+    log(actorName(who), phone ? 'pair-code (phone app)' : 'pair-code');
     return code;
   }
   function pair({ code, name, ip, ua, secure = false }) {
-    const p = kvGet('pair');
-    if (!p || p.exp < now() || !code || sha(String(code)) !== p.hash) return { error: 'Pairing code is wrong or expired: run `npm run pair` again', code: 403 };
-    kvSet('pair', null);
+    const key = ['pair', 'pairPhone'].find((k) => { const p = kvGet(k); return p && p.exp >= now() && code && sha(String(code)) === p.hash; });
+    if (!key) return { error: 'Pairing code is wrong or expired. Make a new one: laptop dashboard → Access → "Pair my phone" (or `npm run pair` for the laptop)', code: 403 };
+    kvSet(key, null);
     const token = newToken(), id = newId(), t = now();
-    const label = String(name || 'Laptop').slice(0, 32);
+    const label = String(name || (key === 'pairPhone' ? 'Owner phone' : 'Laptop')).replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 32) || (key === 'pairPhone' ? 'Owner phone' : 'Laptop');
     q.insert.run(id, sha(token), label, 'owner', 'approved', t, t, t + TOKEN_DAYS * DAY, t, ip, String(ua || '').slice(0, 160));
-    log(label, 'paired as owner', null, ip);
+    log(label, key === 'pairPhone' ? 'paired as owner (phone app)' : 'paired as owner', null, ip);
     return { id, token, cookie: cookieFor(token, TOKEN_DAYS * 86400, secure) };
   }
 

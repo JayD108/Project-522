@@ -1459,6 +1459,22 @@ async function tunnelTests() {
       const ok = j.status === 200 && d.ip === '203.0.113.9 (internet)' && v.status === 200 && room.status === 200 && acc.status === 403;
       return ok ? { detail: `request shows ${d.ip} · approved → vitals/room 200, owner APIs still 403` } : { ok: false, reason: JSON.stringify({ j: j.status, ip: d?.ip, v: v.status, room: room.status, acc: acc.status }) };
     });
+    await timed('owner Android app: pairing QR carries the internet address; the phone pairs over the link and becomes an owner', async () => {
+      const q = await own('/api/pair/phone', {});
+      const u = new URL(q.payload);
+      const wrong = await net('POST', '/api/pair', { code: '0'.repeat(32), name: 'Jay phone' });
+      const offWifi = await net('POST', '/api/pair', { code: q.code, name: 'Jay phone' }, { 'cf-connecting-ip': '198.51.100.7' });
+      const r = await net('POST', '/api/pair', { code: q.code, name: 'Jay phone' });
+      const cookie = (r.cookie || '').split(';')[0];
+      const acc = await net('GET', '/api/access', null, { cookie });
+      const ver = await net('GET', '/api/version', null, { cookie });
+      const reuse = await net('POST', '/api/pair', { code: q.code, name: 'again' });
+      const dev = acc.j?.devices?.find((d) => d.name === 'Jay phone');
+      const ok = u.protocol === 'jharokha:' && u.searchParams.get('u') === `https://${HOST}` && /^[0-9a-f]{32}$/.test(u.searchParams.get('c')) && q.svg.startsWith('<svg')
+        && wrong.status === 403 && offWifi.status === 403 && r.status === 200 && /Secure/.test(r.cookie || '') && acc.status === 200 && dev?.role === 'owner'
+        && ver.status === 200 && ver.j.api === 1 && reuse.status === 403 && acc.j.audit.some((a) => a.action === 'paired as owner (phone app)');
+      return ok ? { detail: `QR → ${u.searchParams.get('u')} · wrong/off-Wi-Fi/reuse → 403 · paired → owner, /api/version api=${ver.j.api}` } : { ok: false, reason: JSON.stringify({ p: q.payload, wrong: wrong.status, offWifi: offWifi.status, r: r.status, acc: acc.status, dev, ver: ver.j, reuse: reuse.status }) };
+    });
     await timed('stays on after a server restart (owner opted in); off → QR back to the Wi-Fi address', async () => {
       S.proc.kill('SIGTERM'); await new Promise((r) => S.proc.once('exit', r));
       S = await startW4Server({ JHK_DATA: dataDir, JHK_CLOUDFLARED: fake, JHK_LAPTOP_IP: '203.0.113.1' });
