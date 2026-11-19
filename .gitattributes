@@ -2,3 +2,5 @@
 *.mp4 binary
 *.webm binary
 *.png binary
+*.bat text eol=crlf
+*.jar binary
