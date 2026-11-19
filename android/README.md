@@ -42,6 +42,13 @@ On the Wall and Remote tabs, the **phone's volume buttons** change the laptop's 
 | `data/Pairing.kt` | QR / link parser (unit-tested) |
 | `ui/` | Compose screens, theme = the dashboard's `styles.css` tokens |
 
-## Not yet (Phase 2, see ANDROID.md §6)
+## Background, alerts, share (0.2.0, Phase 2)
 
-The app is connected only while it's on screen. The next steps are a foreground service plus notifications (join requests, timer done, alarm), the share sheet (send a reel or YouTube link from any app to the wall), and media controls in the notification shade. A release build needs a signing key, which only you can create and keep.
+- **Stay connected in the background** (⋯ settings, on by default): `LinkService` is a foreground service of type `specialUse` that holds the link while the app is closed. One quiet ongoing notification shows the connection. When something plays (the Netflix/YouTube tab, or a cast on the wall), it becomes a media player with play/pause and ±10 s, also on the lock screen and for Bluetooth buttons (MediaSession). The notification is re-posted only when its text changes; the position goes through the MediaSession (posting every second made Android turn on "notification cooldown").
+- **Alerts** (only when the app isn't on screen): join requests with **Collaborator / Viewer / Deny** buttons, cast requests with **Show on wall / Deny**, laundry timer done, calendar reminders. An alert clears itself once the request is handled anywhere.
+- **Share → "Jharokha wall"** from any app. A link can be shown on the wall, opened on the laptop (Netflix, Prime…) or added to the watch queue. A photo or video is uploaded to the Drop Zone (streamed) and shown on the wall, or just saved.
+- Permissions added: POST_NOTIFICATIONS (asked once), FOREGROUND_SERVICE, FOREGROUND_SERVICE_SPECIAL_USE.
+
+## Not yet
+
+A release build needs a signing key, which only you can create and keep. Notifications for the sunrise alarm ringing are not added (the alarm rings on the wall).

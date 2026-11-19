@@ -26,6 +26,18 @@ sealed interface Conn {
     data class Offline(val why: String, val relocate: Boolean = false) : Conn
 }
 
+/** Things worth a notification when the app isn't on screen (see LinkService). */
+sealed interface HubEvent {
+    data class JoinRequest(val id: String, val name: String, val ua: String?) : HubEvent
+    data class CastRequest(val id: String, val by: String, val title: String) : HubEvent
+    data class Ding(val kind: String, val label: String) : HubEvent
+    /** These requests are no longer waiting (approved / denied elsewhere): drop their notifications. */
+    data class Settled(val ids: Set<String>) : HubEvent
+}
+
+/** Whatever is playing that the phone can control: the streaming tab on the laptop, else a cast on the wall. */
+data class NowPlaying(val title: String, val sub: String, val playing: Boolean, val pos: Double, val dur: Double, val onWall: Boolean)
+
 /**
  * The one live link to the laptop: `/ws` for pushes and quick commands, [Api] for everything else.
  * App-wide singleton (the remote, notifications and the UI all share it).
@@ -54,6 +66,10 @@ object Hub {
     /** Short messages for the user (errors, "dashboard isn't open", timer done…). */
     val toasts: SharedFlow<String> = _toasts
 
+    private val _events = MutableSharedFlow<HubEvent>(extraBufferCapacity = 32)
+    val events: SharedFlow<HubEvent> = _events
+    private val seenRequests = mutableSetOf<String>()
+
     val baseUrl: String? get() = store.baseUrl
     val deviceName: String get() = store.deviceName
 
@@ -65,20 +81,38 @@ object Hub {
     fun init(context: Context) {
         if (::store.isInitialized) return
         store = Store(context.applicationContext)
-        api = Api(store)
+        api = Api({ store.baseUrl }, { store.token })
         conn.value = if (store.paired) Conn.Offline("Not connected yet") else Conn.Unpaired
     }
 
     fun toast(msg: String) { _toasts.tryEmit(msg) }
 
     // ------------------------------------------------------------------ lifecycle
-    @Synchronized fun start() {
+    // Who needs the link: "ui" (an activity on screen), "service" (background alerts), "share" (share sheet).
+    private val holders = mutableSetOf<String>()
+    val uiVisible: Boolean @Synchronized get() = "ui" in holders
+    val paired: Boolean get() = store.paired
+
+    var background: Boolean
+        get() = store.background
+        set(v) { store.background = v }
+
+    @Synchronized fun hold(who: String) { holders += who; start() }
+    @Synchronized fun release(who: String) { holders -= who; if (holders.isEmpty()) stop() }
+
+    /** "Retry now": drop the current attempt and dial again at once. */
+    @Synchronized fun retryNow() {
+        retryJob?.cancel(); ws?.cancel(); ws = null; attempt = 0
+        if (holders.isNotEmpty()) start()
+    }
+
+    @Synchronized private fun start() {
         wanted = true
         if (!store.paired) { conn.value = Conn.Unpaired; return }
         if (ws == null && retryJob?.isActive != true) connect()
     }
 
-    @Synchronized fun stop() {
+    @Synchronized private fun stop() {
         wanted = false
         retryJob?.cancel()
         ws?.close(1000, "app in background")
@@ -166,15 +200,28 @@ object Hub {
                 m.optJSONObject("v")?.let { vitals.value = Vitals.from(it) }
                 JoinInfo.from(m.optJSONObject("join"))?.let { join.value = it }
             }
-            "access" -> m.optJSONObject("a")?.let { access.value = AccessState.from(it) }
+            "access" -> m.optJSONObject("a")?.let { a ->
+                val st = AccessState.from(a); access.value = st
+                val pending = st.devices.filter { it.status == "pending" }
+                pending.filter { seenRequests.add(it.id) }.forEach { _events.tryEmit(HubEvent.JoinRequest(it.id, it.name, it.ua)) }
+                settle()
+            }
             "screen" -> m.optJSONObject("s")?.let { screen.value = ScreenState.from(it) }
             "media-state" -> media.value = m.optJSONObject("s")?.let(MediaState::from)
             "app-helper" -> appHelper.value = m.optBoolean("on")
             "app-state" -> appState.value = m.optJSONObject("s")?.let(AppState::from)
             "door" -> m.optJSONObject("door")?.let { door.value = Door.from(it) }
-            "fun" -> m.optJSONObject("fun")?.let { fun_.value = FunState.from(it) }
+            "fun" -> m.optJSONObject("fun")?.let { f ->
+                val st = FunState.from(f); fun_.value = st
+                st.casts.filter { seenRequests.add(it.id) }.forEach { _events.tryEmit(HubEvent.CastRequest(it.id, it.by, it.title)) }
+                settle()
+            }
             "tools" -> m.optJSONObject("tools")?.let { tools.value = ToolsState.from(it) }
-            "tools-ding" -> toast(if (m.optString("kind") == "event") "Reminder: ${m.optString("label")}" else "${m.optString("label")} is done")
+            "tools-ding" -> {
+                val kind = m.optString("kind"); val label = m.optString("label")
+                if (uiVisible) toast(if (kind == "event") "Reminder: $label" else "$label is done")
+                _events.tryEmit(HubEvent.Ding(kind, label))
+            }
             "remote-ack" -> {
                 if (m.optString("error") == "read-only") toast("Read-only right now")
                 else if (m.optInt("delivered", 1) == 0) toast(
@@ -184,6 +231,14 @@ object Hub {
             }
             "denied" -> { /* the close (4401) that follows is handled in onClosed */ }
         }
+    }
+
+    /** Requests we notified about that are no longer waiting. */
+    private fun settle() {
+        val waiting = (access.value?.devices?.filter { it.status == "pending" }?.map { it.id }.orEmpty() +
+            fun_.value?.casts?.map { it.id }.orEmpty()).toSet()
+        val gone = seenRequests.filter { it !in waiting }.toSet()
+        if (gone.isNotEmpty()) { seenRequests.removeAll(gone); _events.tryEmit(HubEvent.Settled(gone)) }
     }
 
     // ------------------------------------------------------------------ pairing
@@ -280,6 +335,26 @@ object Hub {
         return false
     }
 
+    fun nowPlaying(): NowPlaying? {
+        val a = appState.value
+        if (appHelper.value && a?.video != null) {
+            return NowPlaying(a.title.ifEmpty { a.site }, "${a.site} on the laptop", a.video.playing, a.video.t, a.video.d, onWall = false)
+        }
+        val c = fun_.value?.casting
+        val md = media.value
+        if (c != null && md != null) return NowPlaying(c.title.ifEmpty { "On the wall" }, "On the wall" + (c.by?.let { " · by $it" } ?: ""), md.playing, md.t, md.d, onWall = true)
+        return null
+    }
+
+    fun playPause(play: Boolean? = null) {
+        val n = nowPlaying() ?: return
+        val cmd = when (play) { true -> "play"; false -> "pause"; null -> "toggle" }
+        if (n.onWall) media(cmd) else app(cmd)
+    }
+
+    fun seekBy(sec: Int) { val n = nowPlaying() ?: return; if (n.onWall) media("seek", sec) else app("seek", sec) }
+    fun seekTo(sec: Double) { val n = nowPlaying() ?: return; if (n.onWall) media("seekTo", sec) else app("seekTo", sec) }
+
     // ------------------------------------------------------------------ REST actions (errors become toasts)
     fun act(what: String, block: suspend Api.() -> Unit) {
         scope.launch {
@@ -299,7 +374,7 @@ object Hub {
     fun castDecide(id: String, approve: Boolean) = act("Cast") { post("/api/fun/cast/$id/${if (approve) "approve" else "deny"}") }
     fun castStop() = act("Stop cast") { post("/api/fun/cast/stop") }
     fun castLink(url: String) = act("Cast") { post("/api/fun/cast", JSONObject().put("url", url)) }
-    fun openOnPc(url: String) = send(JSONObject().put("t", "open-request").put("url", url).put("title", ""))
+    fun openOnPc(url: String, title: String = "") = send(JSONObject().put("t", "open-request").put("url", url).put("title", title.take(60)))
     fun setAlarm(a: JSONObject) = act("Alarm") { post("/api/tools/alarm", a) }
     fun alarmAction(action: String) = act("Alarm") { post("/api/tools/alarm/$action") }
     fun startTimer(label: String, minutes: Int) = act("Timer") { post("/api/tools/timer", JSONObject().put("label", label).put("minutes", minutes)) }

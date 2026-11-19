@@ -122,12 +122,12 @@ Phones reach the laptop only through a **quick tunnel whose URL changes on every
 - [x] Checked end to end on the emulator against a local server and a stand-in dashboard and extension: pair, approve a join, door sign, cinema, wallpaper next, OK and arrows, touchpad, volume keys 50→55→60→55, timer, kicked out → back to pairing, server restart → reconnects.
 - [ ] **On a real Android phone** (you): pair from the real laptop dashboard, over Wi-Fi and over the internet link.
 
-### Phase 2 · Native features
-- [ ] Foreground service keeps `/ws` open while the app is in use; local notifications for `tools-ding`, the alarm ringing, join/cast requests (owners).
-- [ ] Share target: links (reels/YouTube) → cast or queue; images/videos → `PUT /api/drops` → cast.
-- [ ] Volume keys → `media volume` / `app volume` while the Remote is open; haptics on D-pad.
-- [ ] Media notification with play/pause/±10 s for what's on the wall (`media-state` / `app-state`).
-- [ ] UPI: `Intent(ACTION_VIEW, Uri.parse(upiLink))` with a chooser; on return, offer "I paid".
+### Phase 2 · Native features ← built 2026-11-19 (app 0.2.0)
+- [x] Foreground service (`LinkService`, type specialUse, switch in ⋯) keeps `/ws` open with the app closed; notifications for join/cast requests (with action buttons), `tools-ding` timers and calendar reminders. Not added: the sunrise alarm ringing (it rings on the wall).
+- [x] Share target: links → wall / open on the laptop / watch queue; images and videos → `PUT /api/drops` (streamed) → `POST /api/fun/cast/drop/:id`.
+- [x] Volume keys → `app volume` / `media volume` (Phase 1); haptics on the remote keys.
+- [x] Media notification + MediaSession: play/pause/±10 s for the streaming tab or a cast on the wall, also on the lock screen.
+- [ ] UPI (Split & Settle is not in the owner app yet).
 
 ### Phase 3 · Polish and release
 - [ ] App icon/splash from `app/public/icon-512.png`; dark theme tokens from `app/src/styles.css`.
@@ -157,4 +157,5 @@ Phones reach the laptop only through a **quick tunnel whose URL changes on every
 
 ## 9. Decision log
 - 2026-11-19: Android app planned. This document was created. Nothing decided yet beyond the recommendation in §4.
+- 2026-11-19: Phase 1 tried on the user's own Android phone (paired over the hostel Wi-Fi to a test server on the PC). User approved Phase 2; Phase 2 built the same day.
 - 2026-11-19: **Scope: owner-only controller** (the user: "controller that only the owner will use"). **Native Kotlin + Compose** over Capacitor, with the code in `android/` of this repo. Stable address: not decided; re-scan the room QR for now. Phase 0 + Phase 1 built the same day.

@@ -119,7 +119,8 @@
 - [x] Server: phone pairing QR (`POST /api/pair/phone`), `/api/pair` over the internet link, `GET /api/version`, dashboard "Pair my phone" button + test
 - [x] `android/`: native Kotlin + Compose owner app (pair, Home, Wall, Remote with volume keys, People, Tools); emulator end-to-end check (DEVLOG)
 - [ ] **On the device:** `npm test` on the laptop (the new pairing test needs the real tunnel path); pair a real Android phone from the dashboard; try the remote with the extension
-- [ ] Phase 2: foreground service + notifications, share sheet → wall, media notification (ANDROID.md §6)
+- [x] Phase 2 (app 0.2.0): background link + alerts with action buttons, media controls in the shade and on the lock screen, share sheet → wall (DEVLOG)
+- [ ] **On the device:** share a photo from the Gallery and a reel or YouTube link; leave the app closed and get a join alert
 
 ## Every week, when it's done
 - Update `probe/updates.html` (newest week on top), then `npm run show`: it restarts the server and opens What's new + the app in ChromeOS Chrome on the laptop.

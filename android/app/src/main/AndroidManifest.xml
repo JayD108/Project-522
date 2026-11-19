@@ -4,6 +4,10 @@
     <!-- Kept minimal (ANDROID.md §6 Phase 3). No CAMERA: the QR is read by Google's code scanner, which asks nothing. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Phase 2: background link (foreground service) + alerts. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- allowBackup off: the owner token must never leave this phone in a backup. -->
     <application
@@ -33,6 +37,40 @@
                 <data android:scheme="jharokha" android:host="pair" />
             </intent-filter>
         </activity>
+
+        <!-- "Share to Jharokha" from any app: links, photos, videos. -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/share_label"
+            android:taskAffinity=""
+            android:theme="@style/Theme.JharokhaOwner.Dialog">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
+
+        <!-- Keeps the link open while the app is closed: alerts + media controls. No standard type fits a
+             long-lived link to your own server, so it is specialUse (side-loaded app, no Play review). -->
+        <service
+            android:name=".LinkService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Live link to the owner's own room server for join-request alerts and remote media controls" />
+        </service>
+
+        <receiver android:name=".ActionReceiver" android:exported="false" />
 
         <!-- Download Google's QR scanner module at install time instead of on first use. -->
         <meta-data

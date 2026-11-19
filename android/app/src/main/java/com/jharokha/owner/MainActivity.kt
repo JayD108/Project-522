@@ -1,6 +1,9 @@
 package com.jharokha.owner
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
@@ -41,9 +44,18 @@ class MainActivity : ComponentActivity() {
         setIntent(Intent(i).setData(null))           // don't pair again on rotation
     }
 
-    // Connected only while the app is on screen (Phase 2 adds a foreground service for notifications).
-    override fun onStart() { super.onStart(); Hub.start() }
-    override fun onStop() { super.onStop(); Hub.stop() }
+    private val askNotify = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    // The UI holds the link while visible; LinkService keeps it when the app is closed (if "Stay connected" is on).
+    override fun onStart() {
+        super.onStart()
+        Hub.hold("ui")
+        LinkService.sync(this)
+        if (Hub.paired && Hub.background && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            askNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+    override fun onStop() { super.onStop(); Hub.release("ui") }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val k = event.keyCode

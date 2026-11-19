@@ -20,6 +20,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jharokha.owner.BuildConfig
+import com.jharokha.owner.LinkService
 import com.jharokha.owner.data.Conn
 import com.jharokha.owner.data.Hub
 import kotlinx.coroutines.launch
@@ -124,7 +126,7 @@ private fun OfflineBanner(conn: Conn) {
         Text(off.why, color = Jhk.amber)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (off.relocate || Hub.baseUrl?.startsWith("https://") == true) SmallKey("Scan room QR") { scan() }
-            SmallKey("Retry now") { Hub.stop(); Hub.start() }
+            SmallKey("Retry now") { Hub.retryNow() }
         }
     }
 }
@@ -136,6 +138,7 @@ private fun SettingsDialog(onClose: () -> Unit) {
     val me by Hub.me.collectAsState()
     val scan = rememberQrScanner { Hub.onScan(it); onClose() }
     var confirmUnpair by rememberSaveable { mutableStateOf(false) }
+    val ctx = LocalContext.current
     AlertDialog(
         onDismissRequest = onClose, containerColor = Jhk.card,
         title = { Text("This phone") },
@@ -148,6 +151,14 @@ private fun SettingsDialog(onClose: () -> Unit) {
                 Stat("Server API", serverApi?.toString() ?: "?", warn = serverApi != null && serverApi != BuildConfig.API_VERSION)
                 if (serverApi != null && serverApi != BuildConfig.API_VERSION) Muted("The app and the laptop speak different API versions; some buttons may not work. Update the one that's older.")
                 Spacer(Modifier.height(6.dp))
+                var bg by rememberSaveable { mutableStateOf(Hub.background) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Stay connected in the background")
+                        Muted("Alerts for join requests and timers, play/pause in the notification shade. Uses a little battery.")
+                    }
+                    Switch(checked = bg, onCheckedChange = { bg = it; Hub.background = it; LinkService.sync(ctx) })
+                }
                 SmallKey("Scan room QR (new laptop address)") { scan() }
                 SmallKey("Unpair this phone") { confirmUnpair = true }
             }
@@ -156,7 +167,7 @@ private fun SettingsDialog(onClose: () -> Unit) {
     )
     if (confirmUnpair) Confirm(
         "Unpair this phone?", "It stops being an owner and forgets the laptop. To use it again, pair it from the laptop's Access card.", "Unpair",
-        onYes = { scope.launch { Hub.unpair(); onClose() } },
+        onYes = { scope.launch { Hub.unpair(); LinkService.sync(ctx); onClose() } },
     ) { confirmUnpair = false }
 }
 

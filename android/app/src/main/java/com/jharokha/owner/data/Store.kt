@@ -36,6 +36,11 @@ class Store(context: Context) {
 
     val paired: Boolean get() = baseUrl != null && token != null
 
+    /** Keep the link open in the background for alerts and media controls (a foreground service). */
+    var background: Boolean
+        get() = prefs.getBoolean(K_BG, true)
+        set(v) = prefs.edit().putBoolean(K_BG, v).apply()
+
     /**
      * Pairing codes work once. Android can hand the same jharokha://pair link back (task restored from recents,
      * reinstall), so remember a hash of the last code the laptop answered (yes or no) and skip repeats.
@@ -53,6 +58,7 @@ class Store(context: Context) {
         const val K_NAME = "name"
         const val K_TOKEN = "token.v1"
         const val K_LAST_CODE = "lastPairCode"
+        const val K_BG = "background"
     }
 }
 
