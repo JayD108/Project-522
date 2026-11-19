@@ -1,32 +1,83 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
-  DEBUG, ROLE, arming, blobMB, diskReads, layer, lastReadMs, library, loopStats, mode, monitorBack, needMonitorTap, notice,
-  overlayOpen, peer, screensInfo, swapFails, swapSummary, swapping, swaps,
+  DEBUG, ROLE, arming, blobMB, diskReads, layer, library, loopStats, mode, monitorBack, needMonitorTap, notice,
+  overlayOpen, screensInfo, cinema, nightWatch, swapping, showcase,
 } from '../state';
-import { autoSwap, init, openMonitorWindow, requestSwap, start, toggleFullscreen } from '../host';
+import { castHere, init, isWallWindow, launchApp, launchAppWithTap, openMonitorWindow, requestSwap, start, toggleFullscreen } from '../host';
+import { Icon } from './Icon';
+import { DingBanner, Sunrise } from './Tools';
+import { CastOverlay, usePomoChime } from './Fun';
+import { castStop, fun, opened, openRequest } from '../room/roomClient';
+import { accessState, applyUpdate, me, updateReady } from '../serverLink';
+import { toast } from '../state';
+import { CinemaStrip, NightWatch, WeatherLine } from './Week2';
+import { OfflineBadge } from './Week3';
+import { ApprovalTray, RequestPill } from './Week4';
+import { Layer2 } from './Layer2';
+import { startServerLink } from '../serverLink';
+import { startRoom } from '../room/roomClient';
 import { Clock } from './Clock';
 import { Library } from './Library';
-import { startVitals, vitals } from './vitals';
+import { startVitals } from './vitals';
 
 export function App() {
   const stageRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { init(stageRef.current!); startVitals(); }, []);
+  useEffect(() => { init(stageRef.current!); startVitals(); startServerLink(); startRoom(); }, []);
 
   const l = layer.value;
-  const showPanel = l === 'start' || l === 'L2' || (l === 'L1' && overlayOpen.value);
+  // 🎬 Cinema: the strip goes on the dashboard screen (or the only screen); the wallpaper screen just pauses.
+  const strip = cinema.value && l !== 'start' && (l === 'L2' || mode.value === 'single');
+  const showPanel = strip || l === 'start' || l === 'L2' || (l === 'L1' && overlayOpen.value);
+  const casting = fun.value?.casting;
+  // A phone asked to open an app here: straight into the apps window if we have one, else a one-tap prompt.
+  useEffect(() => {
+    const r = openRequest.value;
+    if (!r || ROLE !== 'A') return;
+    if (launchApp(r.url)) { toast(`${r.by} opened ${r.title || new URL(r.url).hostname}`, 4000); openRequest.value = null; }
+  }, [openRequest.value]);
+  useEffect(() => {
+    const o = opened.value;
+    if (o && ROLE === 'A') { toast(`${o.by} opened ${o.title || 'an app'} on this PC`, 4000); opened.value = null; }
+  }, [opened.value]);
+  // New version deployed: on the start screen just reload; otherwise offer it (a reload would drop dual-screen).
+  useEffect(() => { if (updateReady() && l === 'start') applyUpdate(); }, [updateReady(), l]);
+  usePomoChime(isWallWindow() && l !== 'start' && !nightWatch.value && !cinema.value && !accessState.value?.quiet.now);
   return (
     <>
       <div id="stage" ref={stageRef} />
-      {l === 'L1' && <WallOverlay />}
-      <main class={`panel ${showPanel ? '' : 'gone'} ${l === 'L1' ? 'over-video' : ''} ${arming.value ? 'arming' : ''}`} aria-hidden={!showPanel}>
-        {l === 'start' ? <StartScreen /> : <Layer2 />}
+      {l === 'L1' && !cinema.value && <WallOverlay />}
+      <main class={`panel ${showPanel ? '' : 'gone'} ${l === 'L1' ? 'over-video' : ''} ${arming.value ? 'arming' : ''} ${strip ? 'cinema' : ''}`} aria-hidden={!showPanel}>
+        {strip ? <CinemaStrip /> : l === 'start' ? <StartScreen /> : <Layer2 />}
       </main>
+      {casting && castHere() && l !== 'start' && !nightWatch.value && (
+        <CastOverlay link={casting} onStop={me.value?.owner ? () => { castStop().catch(() => {}); } : undefined} />
+      )}
+      {nightWatch.value && l !== 'start' && <NightWatch />}
+      {showcase.value && l !== 'start' && isWallWindow() && <LazyShowcase />}
+      {l !== 'start' && isWallWindow() && <Sunrise />}
+      {l !== 'start' && <DingBanner enabled={isWallWindow() && !cinema.value} />}
       {ROLE === 'B' && <TapFullscreen />}
       {(monitorBack.value || needMonitorTap.value) && (
         <div class="banner">
           {needMonitorTap.value ? 'One more tap to light up the monitor.' : 'Monitor connected.'}
           <button class="primary" onClick={openMonitorWindow}>Open on monitor</button>
           <button onClick={() => { monitorBack.value = false; needMonitorTap.value = false; }}>Not now</button>
+        </div>
+      )}
+      {showPanel && !strip && l !== 'start' && <OfflineBadge />}
+      {showPanel && !strip && l !== 'start' && <ApprovalTray />}
+      {l === 'L1' && !showPanel && !cinema.value && !nightWatch.value && <RequestPill />}
+      {ROLE === 'A' && openRequest.value && Date.now() - openRequest.value.at < 120000 && (
+        <div class="banner open-req">
+          <b>{openRequest.value.by}</b> wants to open <b>{openRequest.value.title || new URL(openRequest.value.url).hostname}</b> on this PC.
+          <button class="primary" onClick={() => { launchAppWithTap(openRequest.value!.url); openRequest.value = null; }}>Open</button>
+          <button onClick={() => { openRequest.value = null; }}>Not now</button>
+          <span class="small muted">After this, phone requests open by themselves.</span>
+        </div>
+      )}
+      {updateReady() && l !== 'start' && (
+        <div class="update-pill" role="status">
+          Jharokha was updated <button class="primary" onClick={applyUpdate}>Reload</button>
         </div>
       )}
       {notice.value && <div class="toast" role="status">{notice.value}</div>}
@@ -59,7 +110,11 @@ function WallOverlay() {
   const st = loopStats.value;
   return (
     <>
-      <div class="wall-clock"><Clock size="small" /></div>
+      <div class="wall-clock"><Clock size="small" /><WeatherLine compact /></div>
+      <button class="l1-swap" onClick={(e) => { e.stopPropagation(); requestSwap(); }} disabled={swapping.value}
+        title={mode.value === 'single' ? 'Show the dashboard (S)' : 'Swap screens (S)'}>
+        <Icon name={mode.value === 'single' ? 'image' : 'swap'} size={20} />{mode.value === 'single' ? 'Dashboard' : 'Swap'}
+      </button>
       {DEBUG && st && (
         <div class="hud">
           {st.width}×{st.height} · {st.fps} fps · dropped {st.dropped}/{st.totalDecoded}<br />
@@ -67,89 +122,6 @@ function WallOverlay() {
         </div>
       )}
     </>
-  );
-}
-
-// --------------------------------------------------------------------------- Layer 2
-function useIsWall() {
-  const [wall, setWall] = useState(() => innerWidth >= 1700);
-  useEffect(() => {
-    const on = () => setWall(innerWidth >= 1700);
-    addEventListener('resize', on);
-    return () => removeEventListener('resize', on);
-  }, []);
-  return wall;
-}
-
-function Layer2() {
-  const wall = useIsWall();
-  const single = mode.value === 'single';
-  return (
-    <div class={`l2 ${wall ? 'wall' : 'compact'}`}>
-      <header class="l2-head">
-        <Clock />
-        <div class="actions">
-          <button class="primary big" onClick={requestSwap} disabled={swapping.value}>
-            {single ? (overlayOpen.value ? '▣ Back to wallpaper' : '▣ Dashboard') : '⇄ Swap'}
-          </button>
-          <button onClick={toggleFullscreen}>⛶</button>
-        </div>
-      </header>
-      <VitalsStrip />
-      <div class="l2-grid">
-        {ROLE === 'A' || !wall ? <Library /> : null}
-        <EngineCard />
-      </div>
-    </div>
-  );
-}
-
-function VitalsStrip() {
-  const v = vitals.value;
-  const p = peer.value;
-  const b = v.battery;
-  const pressureCls = v.pressure === 'serious' || v.pressure === 'critical' ? 'warn' : v.pressure === 'fair' ? 'amber' : 'good';
-  return (
-    <div class="vitals">
-      <Vital label="Power" value={b ? `${Math.round(b.level * 100)}%${b.charging ? ' ⚡' : ''}` : 'n/a'} cls={b && b.level < 0.2 && !b.charging ? 'warn' : ''} />
-      <Vital label="CPU" value={v.pressure} cls={pressureCls} />
-      <Vital label="Network" value={v.online ? (v.net?.type ? `${v.net.type} · ${v.net.rtt ?? '?'} ms` : 'online') : 'offline'} cls={v.online ? '' : 'warn'} />
-      <Vital label="Screens" value={mode.value === 'dual' ? (p.alive ? `linked · ${p.rtt ?? '–'} ms` : 'no link') : 'single'} cls={mode.value === 'dual' && !p.alive ? 'warn' : ''} />
-      <Vital label="Temp / fan" value="n/a" cls="muted" />
-    </div>
-  );
-}
-
-function Vital({ label, value, cls = '' }: { label: string; value: string; cls?: string }) {
-  return <div class="vital"><span class="vital-label">{label}</span><span class={`vital-value ${cls}`}>{value}</span></div>;
-}
-
-function EngineCard() {
-  const st = loopStats.value;
-  const sum = swapSummary(swaps.value);
-  const [auto, setAuto] = useState('');
-  const runAuto = async () => {
-    setAuto('running…');
-    const r0 = diskReads.value;
-    const { ok, times } = await autoSwap(50);
-    const s = swapSummary(times);
-    setAuto(`${ok}/50 ok · med ${s?.med ?? '–'} · max ${s?.max ?? '–'} ms · disk reads during test: ${diskReads.value - r0}`);
-  };
-  return (
-    <section class="card">
-      <h2>Wallpaper engine</h2>
-      <dl class="kv">
-        <dt>Playing</dt><dd>{st ? `${st.width}×${st.height} · ${st.fps} fps${st.paused ? ' · paused' : ''}` : '—'}</dd>
-        <dt>Loop</dt><dd>{st ? `${st.loops} loops · ${st.hitches} hitches · seam ${st.lastSeamMs} ms` : '—'}</dd>
-        <dt>Dropped</dt><dd>{st ? `${st.dropped} / ${st.totalDecoded}` : '—'}</dd>
-        <dt>Swaps</dt><dd>{sum ? `${sum.n} · median ${sum.med} ms · max ${sum.max} ms` : 'none yet'}{swapFails.value ? ` · ${swapFails.value} failed` : ''}</dd>
-        <dt>RAM</dt><dd>{blobMB.value ? `${blobMB.value} MB clip held here` : 'no clip held here'}{vitals.value.heapMB != null ? ` · JS ${vitals.value.heapMB} MB` : ''}</dd>
-        <dt>Disk</dt><dd>{diskReads.value} video read(s){lastReadMs.value ? ` · last ${lastReadMs.value} ms` : ''}</dd>
-      </dl>
-      {DEBUG && ROLE === 'A' && mode.value === 'dual' && (
-        <p><button onClick={runAuto} disabled={auto === 'running…'}>Auto-swap ×50</button> <span class="small">{auto}</span></p>
-      )}
-    </section>
   );
 }
 
@@ -163,4 +135,12 @@ function TapFullscreen() {
   }, []);
   if (fs) return null;
   return <div class="tapfs"><button class="primary huge" onClick={toggleFullscreen}>Tap to fill this screen</button></div>;
+}
+
+// Showcase is its own chunk (canvas + Web Audio), loaded the first time it's switched on.
+let showcaseMod: typeof import('./Showcase') | null = null;
+function LazyShowcase() {
+  const [m, setM] = useState(showcaseMod);
+  useEffect(() => { if (!m) import('./Showcase').then((x) => { showcaseMod = x; setM(x); }); }, []);
+  return m ? <m.Showcase /> : <div class="showcase" />;
 }

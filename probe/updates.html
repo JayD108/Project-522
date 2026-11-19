@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jharokha · What's new</title>
+<style>
+  :root { --bg:#0d0c0b; --card:#1a1815; --line:#322d27; --ink:#f1e9dc; --muted:#9a9083; --accent:#e0a458; --good:#8cc58c; --amber:#e0b458; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 20px 64px; }
+  h1 { font-size: 44px; font-weight: 300; letter-spacing: .03em; margin: 0; }
+  .sub { color: var(--muted); margin: 6px 0 24px; }
+  .go { display: inline-block; background: var(--accent); color: #1a1208; font-weight: 600; text-decoration: none;
+        padding: 12px 22px; border-radius: 10px; margin: 0 8px 8px 0; }
+  .go.alt { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .week { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; margin-top: 18px; }
+  .week.new { border-color: var(--accent); }
+  .week h2 { margin: 0 0 4px; font-size: 20px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .tag { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px; border-radius: 99px; border: 1px solid; }
+  .tag.new { color: var(--accent); } .tag.done { color: var(--good); } .tag.dev { color: var(--amber); }
+  .date { color: var(--muted); font-size: 14px; }
+  ul { margin: 10px 0 0; padding-left: 20px; } li { margin: 4px 0; }
+  .try { margin-top: 12px; padding: 12px 14px; background: #201d1a; border-radius: 10px; font-size: 15px; }
+  .try b { color: var(--accent); }
+  kbd { font: 13px ui-monospace, monospace; background: #2a2622; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Jharokha</h1>
+  <p class="sub">What's new on this laptop, newest first. Updated at the end of every week.</p>
+  <a class="go" href="/app/">Open Jharokha →</a>
+  <a class="go alt" href="/app/?debug">Open with debug HUD</a>
+
+  <section class="week new">
+    <h2>Week 7 · Tools, sunrise alarm, Showcase + full phone remote for Netflix/YouTube <span class="tag new">new</span> <span class="date">19 Nov 2026</span></h2>
+    <ul>
+      <li><b>Swap button on the wallpaper:</b> a small <i>Swap</i> button at the bottom of Layer 1 swaps the screens straight away (on one screen it says <i>Dashboard</i>).</li>
+      <li><b>Netflix / YouTube open without a tap:</b> tap an app on your phone and it opens full screen on the PC.</li>
+      <li><b>Control everything from the phone</b> (after the one-time setup below): Home → <i>Remote</i> card.
+        <i>Remote</i> = arrow pad + OK to move around rows and open titles · <i>Touchpad</i> = drag a pointer, tap to click, two fingers to scroll ·
+        <i>Type</i> = type into the search box, or tap "Search Netflix". Plus play/pause, ±10 s, scrub, volume, mute, full screen, <i>Skip intro / Skip ad</i>, close.</li>
+      <li><b>Tools tab</b> (laptop and phone): <b>Polls</b> (one vote each, can close on a timer) · <b>Laundry timers</b> (everyone gets a chime when the wash is done) ·
+        <b>Split &amp; Settle</b> (add what you paid; it works out who pays whom, with a <i>Pay with UPI</i> button that opens GPay/PhonePe/Paytm with the amount filled in) ·
+        <b>Sunrise alarm</b> (the wall slowly fills with warm light before your alarm, then chimes softly).</li>
+      <li><b>Showcase</b> (<kbd>V</kbd>, or the button next to Night): the wall turns into a ring of light that dances to the music in the room (laptop microphone; nothing is recorded or sent).</li>
+      <li>The wall screen also shows running timers and the newest poll.</li>
+    </ul>
+    <div class="try"><b>One-time setup for the phone remote:</b> on the laptop open Chrome → <kbd>chrome://extensions</kbd> → turn on <i>Developer mode</i> (top right) → <i>Load unpacked</i> → <i>Linux files</i> → <i>jharokha</i> → <i>extension</i> → <i>Select</i>. Done: "Jharokha Remote" connects by itself.<br>
+    <b>Try:</b> Tools → <i>Sunrise alarm</i> → <i>Test now</i> (a 20-second sunrise). Then add your UPI ID in Split &amp; Settle.</div>
+  </section>
+
+  <section class="week">
+    <h2>Apps buttons fixed + cast reels <span class="tag done">built</span> <span class="date">18 Nov 2026</span></h2>
+    <ul>
+      <li><b>Netflix / Prime / YouTube / Google from the phone:</b> the first time, tap <i>Open</i> once on the laptop; that opens an "apps window" (on the big screen when there are two). After that, every phone request opens there by itself, no taps.</li>
+      <li><b>Updates reach open screens:</b> phones reload by themselves; the laptop shows "Jharokha was updated · Reload".</li>
+      <li><b>Cast a reel:</b> in Instagram tap Share → <i>Copy link</i>. In Jharokha on the phone tap <i>Paste</i>, then <i>Cast</i>. Works for Instagram, Facebook, TikTok and YouTube Shorts (Shorts can even be paused and turned up from the phone).</li>
+    </ul>
+    <div class="try"><b>Important once:</b> close the old Jharokha window on the laptop (or press Reload) so it runs this version.</div>
+  </section>
+
+  <section class="week">
+    <h2>Phone remote, cast from phone, people &amp; a safer file chain <span class="tag done">built</span> <span class="date">18 Nov 2026</span></h2>
+    <ul>
+      <li><b>New phone app:</b> five tabs (Home, Share, Board, Fun, People), bigger buttons, and "On the wall" at the top whenever something is playing.</li>
+      <li><b>Cast from your phone:</b> Home → <i>Video, photo or song</i>. Pick a file and it plays on the PC. Friends' casts wait for your OK.</li>
+      <li><b>Phone remote:</b> play/pause, −10/+10 s, scrub, volume, mute and stop for what's on the screen, including YouTube.</li>
+      <li><b>Apps:</b> Netflix, Prime Video, YouTube and Google tiles on the laptop's Home. On the phone choose <i>Open on: PC</i> and the laptop shows a one-tap "Open".</li>
+      <li><b>People:</b> owners can promote, demote or kick anyone. Everyone can step down or leave (People tab).</li>
+      <li><b>Safer files:</b> stored encrypted (AES-256), photo GPS/location removed, type checked from the file itself, deleted after 7 days.</li>
+    </ul>
+  </section>
+
+  <section class="week">
+    <h2>Refinements · open files, play links, same-Wi-Fi only <span class="tag done">built</span> <span class="date">18 Nov 2026</span></h2>
+    <ul>
+      <li><b>Open shared files on the laptop:</b> click a file's name in Room → Drop zone. Pictures, videos, audio, PDFs and text open right there. Owners can press <i>Wall</i> to put a picture or video on the monitor.</li>
+      <li><b>Play links on the laptop:</b> in Fun → Watch-party queue, click a YouTube title (or <i>Play here</i>) and it plays in a window on this screen. <i>Wall</i> still sends it to the monitor; other links open in a new tab.</li>
+      <li><b>Same Wi-Fi only (now the default):</b> phones on mobile data are refused, even approved ones. Change it in Room → Access → <i>Who can connect</i>.</li>
+      <li><b>Room code in the QR:</b> the QR now carries a code that changes every 10 minutes. You can only ask to join if you've seen the screen in the room; a forwarded old link stops working.</li>
+    </ul>
+    <div class="try"><b>Try it:</b> Turn your phone's mobile data off, connect it to the hostel Wi-Fi, and scan the QR. If the phone is refused anyway, Room → Access shows it under "Refused recently" with a <i>Trust this network</i> button.</div>
+  </section>
+
+  <section class="week">
+    <h2>Week 6 · Fun: watch party, cast to wall, study room, game night, ink theme <span class="tag done">built</span> <span class="date">18 Nov 2026</span></h2>
+    <ul>
+      <li><b>Phones join from anywhere:</b> the QR is now a public https link (Wi-Fi or mobile data). Strangers only get the join page until you approve them.</li>
+      <li><b>Watch-party queue:</b> paste YouTube links, everyone votes, the top one is "Up next" on the wall. Netflix/Prime links stay links (DRM).</li>
+      <li><b>Cast to wall:</b> friends ask, you tap <i>Show on wall</i>, and the video plays full screen on the monitor. The wallpaper pauses and comes back when you press Stop.</li>
+      <li><b>Study room:</b> one shared Pomodoro timer for everyone, big on the wall, with a soft chime at each switch (silent at night).</li>
+      <li><b>Game night:</b> a live scoreboard anyone can update from their phone, shown on the wall.</li>
+      <li><b>Ink theme:</b> paper and brush-ink look. Wallpapers tab → Look → Ink.</li>
+    </ul>
+    <div class="try"><b>Try it:</b> Dashboard → <i>Fun</i> tab. Paste a YouTube link and press <i>Wall</i>. On your phone (QR) open the room → Fun → start the study timer and watch it on the laptop.</div>
+  </section>
+
+  <section class="week">
+    <h2>Fixes · Night Watch + phones that can't connect <span class="tag done">built</span> <span class="date">18 Nov 2026</span></h2>
+    <ul>
+      <li><b>New Night Watch clock:</b> a soft deep-red serif clock (Fraunces), AM/PM, a thin minute bar and the date. It drifts a few pixels every minute so nothing burns in.</li>
+      <li><b>Easy to wake:</b> tap or click anywhere, or press any key. Moving the mouse brings the cursor back with a "tap to wake" hint; the cursor only hides while idle.</li>
+      <li><b>Share over the internet</b> (for when the Wi-Fi blocks phones): one switch in <i>Connect a phone</i> gives a free Cloudflare https link that works on any network, even mobile data. Strangers only see the join page until you approve them. Off by default.</li>
+    </ul>
+    <div class="try"><b>To turn it on:</b> in the Linux terminal run <code>npm run tunnel:install</code> once (asks for sudo). Then Home → People → <i>Connect a phone</i> → <i>Share over the internet…</i> → <i>Yes, share it</i>. Scan the new QR with your phone.</div>
+  </section>
+
+  <section class="week">
+    <h2>Week 5 · Room board, door sign, files, phone remote + new dashboard <span class="tag done">built</span> <span class="date">18 Nov 2026</span></h2>
+    <ul>
+      <li><b>New laptop dashboard:</b> tabs for Home, Wallpapers, Room and System instead of one long page. Home shows vitals, now playing, door sign, people and the board.</li>
+      <li><b>New monitor layout:</b> when the dashboard is on the big screen it becomes a wall display (huge clock, door sign, sticky notes, who's in, and a "Scan to join" QR) readable from across the room.</li>
+      <li><b>Room board:</b> notes everyone can add at once, live on every screen and phone.</li>
+      <li><b>Door sign:</b> Come in, Knock first, Busy, Studying, Sleeping or Away, plus a note.</li>
+      <li><b>Drop zone:</b> share files. They're kept 7 days, up to 500 MB per phone.</li>
+      <li><b>Phone remote</b> for owners: Swap, Cinema, Night and wallpaper from your phone.</li>
+      <li><b>Connect a phone</b> helper (Home → People): a big QR and a checklist that turns green the moment a phone gets through.</li>
+    </ul>
+    <div class="try"><b>Try it:</b> Open Jharokha → Start → Dashboard. Add a note and set the door sign on Home. Open <i>Connect a phone</i> and work through the steps. So far <b>no phone has reached the laptop</b>, so check port forwarding (step 2). If the hostel Wi-Fi blocks it, connect the laptop to your phone's hotspot and set the new Wi-Fi address.</div>
+  </section>
+
+  <section class="week">
+    <h2>Week 4 · Access: friends join from their phone <span class="tag done">built</span> <span class="date">18 Nov 2026</span></h2>
+    <ul>
+      <li><b>Join from a phone:</b> scan the QR (or type <i>laptop-ip</i>:8080/join), enter a name, then wait for approval.</li>
+      <li><b>Approval tray:</b> "Priya wants to join" pops up on the dashboard. Tap ✓ Collaborator, Viewer or Owner, or ✕ to say no. Over the wallpaper a small 🔔 pill appears instead.</li>
+      <li><b>Device token:</b> an approved phone stays signed in for 30 days. Remove it any time from the Access card.</li>
+      <li><b>Kill switch</b> (owner-only mode), <b>quiet hours</b> (friends read-only at night), <b>audit log</b>, rate limits, max 20 devices.</li>
+      <li><b>This laptop is now paired as an owner.</b> If the dashboard ever says "Pair this screen", run <code>npm run pair</code> in the Linux terminal.</li>
+      <li>Fixed: the QR now has the proper white border, so phone cameras can lock on.</li>
+    </ul>
+    <div class="try"><b>Try it:</b> On your phone (same Wi-Fi, not mobile data), open the browser and type <b>http://192.168.10.69:8080/join</b>. If it loads, ask to join and approve yourself on the laptop. If it doesn't load: check Settings → Linux → Port forwarding → 8080 is on. If it still fails, the hostel Wi-Fi probably blocks phone-to-laptop traffic (then a phone hotspot or travel router is the fix).</div>
+  </section>
+
+  <section class="week">
+    <h2>Week 3 · Server core <span class="tag done">built</span> <span class="date">18 Nov 2026</span></h2>
+    <ul>
+      <li><b>New server</b> (Fastify + live WebSocket + SQLite) runs by itself in Linux and restarts if it crashes.</li>
+      <li><b>Vitals Ring:</b> one circle for Power · CPU · Network · Server. Each part turns amber or red and says why.</li>
+      <li><b>Server panel:</b> uptime, traffic, devices, database, disk, memory and errors, live every 2 s.</li>
+      <li><b>Live QR</b> for phones. Press <i>Set Wi-Fi IP</i> once (Linux can't see the laptop's Wi-Fi address).</li>
+      <li><b>"Server offline" badge</b> if Linux stops. The wallpaper keeps playing, and the badge clears by itself when the server is back.</li>
+    </ul>
+    <div class="try"><b>Try it:</b> Open Jharokha → Start → <i>▣ Dashboard</i> (or <kbd>S</kbd>). Look at the ring and the Server card. Set your Wi-Fi IP (Settings → Network → Wi-Fi) and scan the QR with your phone; port forwarding for 8080 must be on (Settings → Linux → Port forwarding).</div>
+    <p class="muted">Still to check with you: phone scan + reboot (DEVICE-CHECKS §H).</p>
+  </section>
+
+  <section class="week">
+    <h2>Week 2 · Coexist, scenes, weather <span class="tag done">built</span> <span class="date">18 Nov 2026</span></h2>
+    <ul>
+      <li><b>Auto-yield:</b> when Netflix or another window covers Jharokha, the wallpaper pauses. After 2 minutes it frees the video memory too.</li>
+      <li><b>🎬 Cinema</b> (<kbd>C</kbd>): pauses the wallpaper, turns the dashboard into a dim strip and mutes notifications on both screens.</li>
+      <li><b>🌙 Night Watch</b> (<kbd>N</kbd>): both screens go near-black with a faint red clock. Tap ☀ wake (or <kbd>Esc</kbd>) to leave.</li>
+      <li><b>Schedule:</b> Dawn / Deep Work / Ambient / Night, each with its own time and wallpaper. The next clip is loaded 3 min early, so the switch is smooth.</li>
+      <li><b>Weather:</b> type your city in the Weather card. It shows next to the clock on both screens and updates every 30 min.</li>
+    </ul>
+    <div class="try"><b>Try it:</b> Open Jharokha → <i>Load sample wallpapers</i> → <i>Start</i>. In the dashboard press 🎬 Cinema, then 🌙 Night. Set a city in the Weather card. In Schedule, pick a wallpaper for each scene and turn on <i>Auto by time of day</i>.</div>
+    <p class="muted">Still to check with you: Netflix CPU with and without Jharokha, and whether ChromeOS reports "covered" (DEVICE-CHECKS §D, §G).</p>
+  </section>
+
+  <section class="week">
+    <h2>Week 1 · App shell + dual screen <span class="tag done">built</span></h2>
+    <ul>
+      <li>An installable app (Chrome menu ⋮ → Cast, save and share → Install page as app).</li>
+      <li>The video is read from disk once into memory and loops seamlessly. AV1 clips are refused.</li>
+      <li>Dashboard on the laptop, wallpaper on the monitor. <b>⇄ Swap</b> (<kbd>S</kbd>) trades them in about 0.1 s.</li>
+      <li>Unplug the monitor and it falls back to one screen without crashing.</li>
+    </ul>
+  </section>
+
+  <section class="week">
+    <h2>Week 0 · Probe kit <span class="tag done">built</span></h2>
+    <ul>
+      <li>Hardware probe at <a href="/" style="color:var(--accent)">/</a> and the phone network test at <a href="/lan.html" style="color:var(--accent)">/lan.html</a>.</li>
+      <li>The server runs inside Linux and starts by itself at boot.</li>
+    </ul>
+  </section>
+
+  <section class="week">
+    <h2>Coming next · Week 7 <span class="tag dev">next</span></h2>
+    <ul>
+      <li>Utilities: polls, laundry timers, Split &amp; Settle (UPI links), sunrise alarm, and the audio-reactive showcase.</li>
+    </ul>
+  </section>
+</div>
+</body>
+</html>

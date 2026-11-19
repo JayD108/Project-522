@@ -2,6 +2,9 @@
 // Library records are written immediately (rare, user-triggered).
 // Settings are kept in memory and flushed in ONE write every 5 min, on hide, and on pagehide (v1 §4.4).
 
+import { DEFAULT_SCENES, type Scene } from '../scenes';
+import type { Place, Weather } from '../weather';
+
 const DB_NAME = 'jharokha';
 const STORE = 'kv';
 let dbp: Promise<IDBDatabase> | null = null;
@@ -32,8 +35,16 @@ export interface Settings {
   currentId: string | null;     // wallpaper shown on Layer 1
   wallScreenLabel: string | null; // which screen gets Layer 1 in dual mode
   showClockOnWall: boolean;
+  scenes: Scene[];
+  autoScenes: boolean;
+  place: Place | null;
+  lastWeather: Weather | null;  // shown at boot / offline until the next fetch
+  theme: 'night' | 'ink';       // Layer 2 look (Week 6)
 }
-const DEFAULTS: Settings = { currentId: null, wallScreenLabel: null, showClockOnWall: true };
+const DEFAULTS: Settings = {
+  currentId: null, wallScreenLabel: null, showClockOnWall: true,
+  scenes: DEFAULT_SCENES, autoScenes: false, place: null, lastWeather: null, theme: 'night',
+};
 const FLUSH_MS = 5 * 60 * 1000;
 
 let settings: Settings = { ...DEFAULTS };

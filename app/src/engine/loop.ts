@@ -151,12 +151,17 @@ export class LoopPlayer {
 
   currentTime(): number { return this.active ? this.active.currentTime : 0; }
 
-  pause() { this.paused = true; this.vids.forEach((v) => v.pause()); }
+  pause() {
+    if (this.disposed) return;
+    this.paused = true; this.vids.forEach((v) => v.pause());
+    this.emitStats();                     // UI shows "paused" now, not on the next 1 s tick
+  }
 
   resume() {
     if (!this.paused || this.disposed) return;
     this.paused = false; this.lastT = 0;
     this.active?.play().catch(() => {});
+    this.emitStats();
   }
 
   /** Release decoders + blob URL. The Blob itself is freed when nothing references it. */

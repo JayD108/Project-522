@@ -6,11 +6,15 @@
   "type": "module",
   "engines": { "node": ">=22.13" },
   "scripts": {
-    "setup": "npm --prefix app ci --no-audit --no-fund",
+    "setup": "npm --prefix app ci --no-audit --no-fund && npm --prefix server ci --no-audit --no-fund",
     "build": "npm --prefix app run build",
     "start": "node scripts/start.mjs",
     "dev": "node scripts/start.mjs --dev",
     "test": "node tests/run-all.mjs",
-    "test:quick": "node tests/run-all.mjs --no-browser"
+    "test:quick": "node tests/run-all.mjs --no-browser",
+    "show": "bash scripts/show.sh",
+    "pair": "bash scripts/pair.sh",
+    "tunnel:install": "bash scripts/install-tunnel.sh",
+    "tunnel:off": "bash scripts/tunnel-off.sh"
   }
 }

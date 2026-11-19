@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d0c0b">
+<title>Join · Jharokha</title>
+<style>
+  :root { --bg:#0d0c0b; --card:#1a1815; --line:#322d27; --ink:#f1e9dc; --muted:#9a9083; --accent:#e0a458; --good:#8cc58c; --bad:#e0705a; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font: 17px/1.5 system-ui, sans-serif;
+         display: grid; place-items: center; padding: max(20px, env(safe-area-inset-top)) 18px max(20px, env(safe-area-inset-bottom)); }
+  main { width: 100%; max-width: 420px; }
+  h1 { font-size: 40px; font-weight: 300; letter-spacing: .03em; margin: 0 0 4px; text-align: center; }
+  .sub { color: var(--muted); text-align: center; margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+  label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+  input { width: 100%; font: inherit; font-size: 20px; color: var(--ink); background: #201d1a; border: 1px solid var(--line);
+          border-radius: 10px; padding: 12px 14px; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { width: 100%; margin-top: 14px; font: inherit; font-size: 19px; font-weight: 600; padding: 14px; border-radius: 12px;
+           border: 1px solid var(--accent); background: var(--accent); color: #1a1208; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--muted); border-color: var(--line); font-weight: 400; font-size: 15px; padding: 10px; }
+  button:disabled { opacity: .5; }
+  .err { color: var(--bad); font-size: 15px; margin-top: 10px; min-height: 1.2em; }
+  .big { font-size: 22px; text-align: center; margin: 6px 0 4px; }
+  .muted { color: var(--muted); } .small { font-size: 14px; }
+  .center { text-align: center; }
+  .pulse { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); margin: 6px auto 14px; animation: p 1.6s ease-in-out infinite; }
+  @keyframes p { 50% { opacity: .25; transform: scale(.7); } }
+  @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+  .role { display: inline-block; padding: 3px 12px; border-radius: 99px; border: 1px solid var(--good); color: var(--good); font-size: 15px; }
+  ul { padding-left: 20px; margin: 12px 0 0; } li { margin: 4px 0; }
+  .go-room { display: block; text-align: center; margin-top: 16px; font-weight: 600; font-size: 19px; padding: 14px; border-radius: 12px; background: var(--accent); color: #1a1208; text-decoration: none; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Jharokha</h1>
+  <p class="sub">Room 1 · live window</p>
+
+  <section class="card" id="v-loading"><p class="center muted">Connecting…</p></section>
+
+  <form class="card" id="v-ask" hidden>
+    <label for="name">Your name, so the room knows who's asking</label>
+    <input id="name" maxlength="32" autocomplete="nickname" autocapitalize="words" required>
+    <button type="submit" id="ask">Ask to join</button>
+    <div class="err" id="ask-err" role="alert"></div>
+  </form>
+
+  <section class="card center" id="v-wait" hidden>
+    <div class="pulse" aria-hidden="true"></div>
+    <p class="big">Waiting for approval</p>
+    <p class="muted">Hi <b id="w-name"></b>. Your request is on the room's screen. Keep this page open.</p>
+    <button class="ghost" id="cancel">Cancel request</button>
+  </section>
+
+  <section class="card" id="v-in" hidden>
+    <p class="big">You're in, <b id="i-name"></b></p>
+    <p class="center"><span class="role" id="i-role"></span></p>
+    <p class="center small muted" id="i-quiet" hidden>Quiet hours: read-only until morning.</p>
+    <ul id="i-can"></ul>
+    <a class="go-room" href="/app/room.html">Open the room →</a>
+    <p class="small muted">This phone stays signed in until <span id="i-exp"></span>. An owner can remove it at any time.</p>
+    <button class="ghost" id="leave">Leave the room</button>
+  </section>
+
+  <section class="card center" id="v-no" hidden>
+    <p class="big" id="no-title">Not approved</p>
+    <p class="muted" id="no-text">An owner said no this time.</p>
+    <button id="again">Ask again</button>
+  </section>
+
+  <p class="center small muted" style="margin-top:18px"><a href="/lan.html" style="color:var(--muted)">Network test</a></p>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const views = ['loading', 'ask', 'wait', 'in', 'no'];
+  const show = (v) => views.forEach((x) => { $('v-' + x).hidden = x !== v; });
+  const CAN = {
+    owner: ['Remote for both screens', 'Set the door sign', 'Everything a collaborator can do'],
+    collaborator: ['Write on the room board', 'Share files in the drop zone (kept 7 days)', 'Watch queue and casting (Week 6)'],
+    viewer: ['See the door sign, board and files', 'No edits'],
+  };
+  let timer = 0, lastStatus = '';
+  // The QR carries a room code (?k=…, changes every 10 min): proof you're looking at the room's screen.
+  const roomCode = new URLSearchParams(location.search).get('k') || '';
+
+  async function api(path, body) {
+    const r = await fetch(path, body === undefined ? { cache: 'no-store' } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    let j = {}; try { j = await r.json(); } catch {}
+    if (!r.ok) throw Object.assign(new Error(j.error || 'HTTP ' + r.status), { status: r.status, body: j });
+    return j;
+  }
+
+  function render(me) {
+    clearTimeout(timer);
+    if (me.kill) { $('no-title').textContent = 'Owner-only mode'; $('no-text').textContent = 'The room is closed to guests right now.'; $('again').hidden = true; show('no'); return; }
+    if (me.status === 'pending') {
+      $('w-name').textContent = me.name; show('wait');
+      timer = setTimeout(refresh, 3000);
+    } else if (me.status === 'approved') {
+      $('i-name').textContent = me.name;
+      $('i-role').textContent = me.role[0].toUpperCase() + me.role.slice(1);
+      $('i-quiet').hidden = !me.quiet;
+      $('i-can').innerHTML = '';
+      for (const c of CAN[me.effectiveRole] || []) { const li = document.createElement('li'); li.textContent = c; $('i-can').appendChild(li); }
+      $('i-exp').textContent = new Date(me.expiresAt).toLocaleDateString([], { day: 'numeric', month: 'long' });
+      show('in');
+      timer = setTimeout(refresh, 15000);          // notices revoke / quiet hours
+    } else if (lastStatus === 'pending' || lastStatus === 'approved') {
+      $('no-title').textContent = lastStatus === 'pending' ? 'Not approved' : 'Removed from the room';
+      $('no-text').textContent = lastStatus === 'pending' ? 'An owner said no this time.' : 'An owner removed this phone.';
+      $('again').hidden = false; show('no');
+    } else {
+      show('ask');
+      if (!roomCode) $('ask-err').textContent = 'Scan the QR code on the room\'s screen. The join link only works from the QR.';
+      try { $('name').value = localStorage.getItem('jhk-name') || ''; } catch {}
+    }
+    lastStatus = me.status;
+  }
+
+  async function refresh() {
+    try { render(await api('/api/me')); }
+    catch (e) {
+      if (e.status === 403 && e.body?.error === 'owner-only mode') return render({ kill: true });
+      if (e.status === 403 && e.body?.error === 'not-on-room-wifi') {
+        $('no-title').textContent = 'Use the room\'s Wi-Fi';
+        $('no-text').textContent = 'This room only works on the hostel Wi-Fi. Turn off mobile data, connect to the Wi-Fi, then scan the QR again.';
+        $('again').hidden = true; show('no'); return;
+      }
+      show('loading'); $('v-loading').querySelector('p').textContent = 'Can\'t reach the room: are you on the same Wi-Fi?';
+      timer = setTimeout(refresh, 4000);
+    }
+  }
+
+  $('v-ask').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('name').value.trim();
+    if (!name) return;
+    $('ask').disabled = true; $('ask-err').textContent = '';
+    try { localStorage.setItem('jhk-name', name); } catch {}
+    try { await api('/api/join', { name, k: roomCode }); await refresh(); }
+    catch (x) { $('ask-err').textContent = x.message; }
+    finally { $('ask').disabled = false; }
+  });
+  const leave = async () => { try { await api('/api/leave', {}); } catch {} lastStatus = ''; refresh(); };
+  $('cancel').onclick = leave;
+  $('leave').onclick = leave;
+  $('again').onclick = () => { lastStatus = ''; show('ask'); };
+  refresh();
+</script>
+</body>
+</html>

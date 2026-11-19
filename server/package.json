@@ -1,0 +1,16 @@
+{
+  "name": "jharokha-server",
+  "private": true,
+  "version": "0.3.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "@fastify/static": "10.1.9",
+    "@fastify/websocket": "11.3.7",
+    "fastify": "5.12.8",
+    "qrcode": "1.5.4",
+    "yjs": "13.6.33"
+  }
+}

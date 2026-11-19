@@ -18,9 +18,10 @@ const die = (msg) => { console.error(`\n✗ ${msg}\n`); process.exit(1); };
 const [maj, min] = process.versions.node.split('.').map(Number);
 if (maj < 22 || (maj === 22 && min < 13)) die(`Node ${process.version} is too old: Jharokha needs Node 22.13+ (see SETUP.md).`);
 
-if (!fs.existsSync(path.join(APP, 'node_modules'))) {
-  console.log('→ Installing app dependencies (first run)…');
-  const r = spawnSync('npm', ['ci', '--no-audit', '--no-fund'], { cwd: APP, stdio: 'inherit', shell });
+for (const [dir, what] of [[APP, 'app'], [path.join(ROOT, 'server'), 'server']]) {
+  if (fs.existsSync(path.join(dir, 'node_modules'))) continue;
+  console.log(`→ Installing ${what} dependencies (first run)…`);
+  const r = spawnSync('npm', ['ci', '--no-audit', '--no-fund'], { cwd: dir, stdio: 'inherit', shell });
   if (r.status !== 0) die('npm ci failed: check your internet connection, then run `npm run setup`.');
 }
 
@@ -33,7 +34,8 @@ if (!DEV && !args.includes('--no-build')) {
 if (fs.existsSync(path.join(ROOT, '.env'))) process.loadEnvFile(path.join(ROOT, '.env'));
 const port = process.env.PORT || 8080;
 console.log('→ Starting the server…\n');
-await import(pathToFileURL(path.join(ROOT, 'server', 'probe-server.mjs')).href);
+process.removeAllListeners('warning');   // hide node:sqlite's ExperimentalWarning
+await import(pathToFileURL(path.join(ROOT, 'server', 'index.mjs')).href);
 
 setTimeout(() => {
   console.log(`\n  ▶ Open Jharokha:  http://localhost:${port}/app/${DEV ? '   (built copy)' : ''}`);

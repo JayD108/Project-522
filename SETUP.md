@@ -69,10 +69,10 @@ Leave that terminal open while you use it, then stop it with Ctrl+C.
 **Optional: start automatically at boot** (`systemd --user`, restarts if it crashes). This also builds the app and makes 1080p test clips if ffmpeg is available:
 ```bash
 bash scripts/setup-crostini.sh
-systemctl --user status jharokha-probe      # should say "active (running)"
-journalctl --user -u jharokha-probe -f      # live logs
+systemctl --user status jharokha      # should say "active (running)"
+journalctl --user -u jharokha -f      # live logs
 ```
-To update later: `git pull && npm run build && systemctl --user restart jharokha-probe`
+To update later: `git pull && npm run build && systemctl --user restart jharokha`
 
 ### 3. Open and install it in Chrome (the ChromeOS side, not Linux)
 1. In Chrome, go to **http://localhost:8080/app/**. ChromeOS forwards `localhost` into Linux automatically.
@@ -96,7 +96,7 @@ A phone on the same Wi-Fi can then open `http://<laptop-Wi-Fi-IP>:8080/lan.html`
 | Symptom | Fix |
 |---|---|
 | `Node … is too old` | Install Node 22 LTS (step 2 above, or nodejs.org on Windows) |
-| `Port 8080 is already in use` | Another copy is running (`systemctl --user stop jharokha-probe`), or set `PORT=8081` in `.env` |
+| `Port 8080 is already in use` | Another copy is running (`systemctl --user stop jharokha`), or set `PORT=8081` in `.env` |
 | `/app/` says "App not built yet" | `npm run build` |
 | Second screen stays black / "One more tap" banner | Tap **Open on monitor**. Allow pop-ups for the site if Chrome blocked it |
 | "Chrome cannot decode this file" / AV1 refused | Re-encode with `tools/encode.sh` (H.264) |

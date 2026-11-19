@@ -5,11 +5,16 @@
 import { LoopPlayer } from './engine/loop';
 import { epoch, onMessage, send, type Msg } from './link/channel';
 import { flushSettings, getSettings, loadSettings, startSettingsAutoFlush, updateSettings } from './store/db';
-import { diskReadCount, importFile, listLibrary, persistStorage, readToRam, removeWallpaper, type Wallpaper } from './store/library';
+import { RAM_BUDGET_MB, diskReadCount, importFile, listLibrary, persistStorage, readToRam, removeWallpaper, type Wallpaper } from './store/library';
 import {
-  DEBUG, ROLE, blobMB, currentId, diskReads, lastReadMs, layer, library, loopStats, mode, monitorBack,
+  DEBUG, ROLE, YIELD_MS, blobMB, currentId, diskReads, lastReadMs, layer, library, loopStats, mode, monitorBack,
   arming, lastTiming, needMonitorTap, overlayOpen, peer, screensInfo, swapFails, swapping, swaps, toast,
+  activeScene, autoScenes, cinema, nextChange, nightWatch, showcase, place, scenes, theme, weather, weatherError, yielded,
 } from './state';
+import { nextScene, sceneAt, type Scene } from './scenes';
+import { fetchWeather, geocode, type Place } from './weather';
+import { onServerMessage, setRole, wsSend } from './serverLink';
+import { fun } from './room/roomClient';
 
 let stage: HTMLElement;
 let player: LoopPlayer | null = null;
@@ -22,6 +27,15 @@ let details: ScreenDetails | null = null;
 let lastPong = 0;
 let wakeLock: WakeLockSentinel | null = null;
 let swapWaiter: ((ms: number) => void) | null = null;
+// Week 2
+let fakeHidden = false;                 // debug/test stand-in for document.hidden
+let yieldTimer = 0;
+let resumeAt = 0;                       // media time to come back to after a release
+let resumeId: string | null = null;     // …and which clip that time belongs to
+let peerYielded = false;                // A: B has dropped its clip
+let nextClip: { blob: Blob; wp: Wallpaper } | null = null;  // A: prefetched clip for the next scene
+let clipLoading: Promise<boolean> | null = null;
+let lastScene: string | null = null;
 
 const FADE_MS = 600;
 
@@ -48,7 +62,7 @@ async function playLocal(blob: Blob, wp: Wallpaper, at = 0, onFirst?: (t: number
   try {
     await p.load(blob);
     await p.start(at);
-    if (document.hidden) p.pause();
+    if (isDormant()) { p.pause(); armYield(); }
   } catch (e) {
     p.dispose();
     if (player === p) player = old;
@@ -77,7 +91,7 @@ function recordSwap(ms: number, id: string) {
 }
 
 export function requestSwap() {
-  if (layer.value === 'start') return;
+  if (layer.value === 'start' || cinema.value || nightWatch.value) return;
   if (mode.value === 'single') { overlayOpen.value = !overlayOpen.value; return; }
   if (!peer.value.alive) { toast('Other screen is not responding'); return; }
   const t0 = epoch();
@@ -106,6 +120,7 @@ function onMsg(m: Msg) {
     case 'hello':
       markAlive();
       send({ t: 'hello-ack' });
+      if (ROLE === 'A') { send({ t: 'fx', cinema: cinema.value, night: nightWatch.value, showcase: showcase.value }); send({ t: 'weather', w: weather.value }); send({ t: 'theme', theme: theme.value }); peerYielded = false; }
       if (ROLE === 'A' && startOnHello) { startOnHello = false; sendLayer1ToB(); }
       break;
     case 'hello-ack': markAlive(); break;
@@ -148,7 +163,25 @@ function onMsg(m: Msg) {
       break;
     case 'swap-request': if (layer.value === 'L1') handOver(m.t0, rid()); break;
     case 'play':
-      if (layer.value === 'L1') playLocal(m.blob, m.wp).catch((e) => toast(String(e.message)));
+      if (layer.value === 'L1') { yielded.value = false; playLocal(m.blob, m.wp, m.at ?? 0).catch((e) => toast(String(e.message))); }
+      break;
+    case 'fx': setFx({ cinema: m.cinema, night: m.night, showcase: !!m.showcase }, true); break;
+    case 'weather': weather.value = m.w; break;
+    case 'theme': applyTheme(m.theme); break;
+    case 'released':
+      if (ROLE === 'A') {
+        peerYielded = true;
+        // B let go of its Blob; drop our fallback ref too so the RAM is really freed. Hotplug then costs one disk read.
+        if (layer.value === 'L2' && !player) { setClip(null); nextClip = null; }
+      }
+      break;
+    case 'need-clip':
+      if (ROLE === 'A') {
+        peerYielded = false;
+        ensureClip().then((ok) => {
+          if (ok && clip) send({ t: 'play', blob: clip.blob, wp: clip.wp, at: m.wpId === clip.wp.id ? m.at : 0 });
+        }).catch((e) => toast(String(e.message)));
+      }
       break;
     case 'select': if (ROLE === 'A') selectWallpaper(m.id); break;
     case 'library-changed': refreshLibrary(); break;
@@ -164,7 +197,8 @@ function markAlive() {
   if (!peer.value.alive) peer.value = { alive: true, rtt: peer.value.rtt };
 }
 
-function sendLayer1ToB() {
+async function sendLayer1ToB() {
+  if (!clip) await ensureClip();
   if (!clip) { toast('Import a wallpaper first'); return; }
   if (layer.value === 'L1' && player) { handOver(epoch(), 'start'); return; } // single → dual: hand over live
   swapping.value = true;
@@ -226,11 +260,22 @@ export async function selectWallpaper(id: string) {
   const wp = library.value.find((w) => w.id === id);
   if (!wp) return;
   if (clip?.wp.id === id) return;
-  const { blob, ms } = await readToRam(wp);
-  diskReads.value = diskReadCount(); lastReadMs.value = ms;
-  setClip({ blob, wp });
   currentId.value = id;
   updateSettings({ currentId: id });
+  if (started && isDormant() && (yielded.value || peerYielded)) {
+    // Released for Netflix: don't touch the disk now; wake() reads the new choice when we're back.
+    setClip(null); resumeAt = 0;
+    return;
+  }
+  let blob: Blob;
+  if (nextClip?.wp.id === id) { blob = nextClip.blob; nextClip = null; }       // prefetched ahead of the scene change
+  else {
+    const r = await readToRam(wp);
+    diskReads.value = diskReadCount(); lastReadMs.value = r.ms;
+    blob = r.blob;
+  }
+  setClip({ blob, wp });
+  if (nextClip && nextClip.wp.id !== id) nextClip = null;
   if (!started) return;
   if (layer.value === 'L1') await playLocal(blob, wp);
   else if (mode.value === 'dual') send({ t: 'play', blob, wp });
@@ -301,7 +346,8 @@ async function startDual() {
 
 function openB(wall = pickScreens().wall): boolean {
   const feats = `popup,left=${wall.availLeft},top=${wall.availTop},width=${wall.availWidth},height=${wall.availHeight},fullscreen`;
-  const w = window.open(`./?w=B${DEBUG ? '&debug' : ''}`, 'jharokha-B', feats);
+  const y = new URLSearchParams(location.search).get('yield');
+  const w = window.open(`./?w=B${DEBUG ? '&debug' : ''}${DEBUG && y ? `&yield=${y}` : ''}`, 'jharokha-B', feats);
   if (!w) return false;
   needMonitorTap.value = false;
   monitorBack.value = false;
@@ -331,9 +377,11 @@ function fallBackToSingle(why: string) {
   pending = null; swapping.value = false;
   peer.value = { alive: false, rtt: null };
   toast(why, 6000);
-  if (layer.value !== 'L1' && clip) {
+  if (layer.value !== 'L1') {
     const at = loopStats.value?.mediaTime || 0;
-    playLocal(clip.blob, clip.wp, at, () => { layer.value = 'L1'; }).catch((e) => toast(String(e.message)));
+    ensureClip()
+      .then((ok) => { if (ok && clip) return playLocal(clip.blob, clip.wp, at, () => { layer.value = 'L1'; }); })
+      .catch((e) => toast(String(e.message)));
   }
 }
 
@@ -371,6 +419,10 @@ export async function autoSwap(n = 50, gapMs = 1500): Promise<{ ok: number; time
 export async function init(stageEl: HTMLElement) {
   stage = stageEl;
   onMessage(onMsg);
+  setRole(ROLE);
+  if (ROLE === 'A') startRemote();
+  let lastCast: string | null = null;
+  fun.subscribe((f) => { const k = f?.casting?.url ?? null; if (k !== lastCast) { lastCast = k; updateDormancy(); } });
   window.addEventListener('pagehide', () => send({ t: 'bye' }));
   setInterval(() => {
     send({ t: 'ping', ts: epoch() });
@@ -380,17 +432,19 @@ export async function init(stageEl: HTMLElement) {
     }
   }, 2000);
 
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) player?.pause();       // auto-yield to Netflix etc. (memory release after 2 min: Week 2)
-    else { player?.resume(); if (started || ROLE === 'B') keepAwake(); }
-  });
+  document.addEventListener('visibilitychange', updateDormancy);   // auto-yield to Netflix etc.
 
   document.addEventListener('keydown', (e) => {
+    // Night Watch: any key wakes (except bare modifiers), and does nothing else.
+    if (nightWatch.value && !['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) { e.preventDefault(); setFx({ night: false }); return; }
     if (e.target instanceof HTMLInputElement) return;
     const k = e.key.toLowerCase();
     if (k === 's') requestSwap();
     else if (k === 'f') toggleFullscreen();
-    else if (k === 'escape') overlayOpen.value = false;
+    else if (k === 'c') toggleCinema();
+    else if (k === 'n') toggleNightWatch();
+    else if (k === 'v') toggleShowcase();
+    else if (k === 'escape') { overlayOpen.value = false; if (cinema.value || nightWatch.value || showcase.value) setFx({ cinema: false, night: false, showcase: false }); }
   });
 
   if (ROLE === 'A') {
@@ -398,9 +452,19 @@ export async function init(stageEl: HTMLElement) {
     const s = await loadSettings();
     startSettingsAutoFlush();
     await refreshLibrary();
-    currentId.value = s.currentId && library.value.some((w) => w.id === s.currentId) ? s.currentId : library.value[0]?.id ?? null;
+    scenes.value = s.scenes; autoScenes.value = s.autoScenes; place.value = s.place; weather.value = s.lastWeather;
+    applyTheme(s.theme);
+    const has = (id: string | null | undefined): id is string => !!id && library.value.some((w) => w.id === id);
+    const sc = sceneAt(new Date(), s.scenes);
+    activeScene.value = sc?.key ?? null;
+    if (s.autoScenes) lastScene = sc?.key ?? null;
+    // Auto scenes on: the scene's wallpaper wins over the last manual pick (still just one disk read).
+    currentId.value = s.autoScenes && has(sc?.wallpaperId) ? sc!.wallpaperId : has(s.currentId) ? s.currentId : library.value[0]?.id ?? null;
     if (currentId.value) await selectWallpaper(currentId.value);   // the one disk read, before Start
     await loadScreenDetails(false);
+    setInterval(schedulerTick, 15000);
+    schedulerTick();
+    startWeather();
   } else {
     await refreshLibrary();
     send({ t: 'hello' });
@@ -410,8 +474,250 @@ export async function init(stageEl: HTMLElement) {
   if (DEBUG) {
     (window as any).__jhk = {
       importBlob: (b: Blob, name: string) => importWallpapers([b], [name]),
-      LoopPlayer, select: selectWallpaper, loadSamples, deleteWallpaper, swap: requestSwap, autoSwap, start, openMonitorWindow, flushSettings,
-      state: { layer, mode, peer, swaps, loopStats, diskReads, blobMB, library, needMonitorTap, lastTiming, overlayOpen, currentId, screensInfo },
+      LoopPlayer, select: selectWallpaper, setFx, setTheme, toggleCinema, toggleNightWatch, setScene, setAutoScenes, schedulerTick,
+      fakeHidden: (h: boolean) => { fakeHidden = h; updateDormancy(); },
+      hasPrefetch: () => nextClip?.wp.id ?? null,
+      playerCount: () => document.querySelectorAll('.jhk-player').length, loadSamples, deleteWallpaper, swap: requestSwap, autoSwap, start, openMonitorWindow, flushSettings,
+      state: { layer, mode, peer, swaps, loopStats, diskReads, blobMB, library, needMonitorTap, lastTiming, overlayOpen, currentId, screensInfo,
+        cinema, nightWatch, showcase, yielded, scenes, autoScenes, activeScene, nextChange, weather },
     };
   }
 }
+
+// ========================================================================= Week 2 · coexist
+// A window is "dormant" when it's covered (hidden), or in 🎬 Cinema / 🌙 Night Watch.
+// Dormant → pause at once; still dormant after YIELD_MS (2 min) → drop the player AND the Blob ref (v2 §1.3).
+function isDormant() { return document.hidden || fakeHidden || cinema.value || nightWatch.value || showcase.value || castHere(); }
+/** This window is the one on the wall (monitor): W-B in dual mode, the only window in single mode. */
+export const isWallWindow = () => ROLE === 'B' || mode.value === 'single';
+/** A cast is showing in this window → the wallpaper pauses (and frees the decoder after the yield delay). */
+export const castHere = () => !!fun.value?.casting && isWallWindow() && (started || ROLE === 'B');
+
+function armYield() {
+  if (!yieldTimer && !yielded.value) yieldTimer = window.setTimeout(releaseMedia, YIELD_MS);
+}
+
+function updateDormancy() {
+  if (isDormant()) { player?.pause(); armYield(); }
+  else {
+    clearTimeout(yieldTimer); yieldTimer = 0;
+    wake().catch((e) => toast(String(e?.message || e)));
+  }
+}
+
+function releaseMedia() {
+  yieldTimer = 0;
+  if (!isDormant()) return;
+  const had = !!player || !!clip || !!nextClip;
+  if (player) { resumeAt = player.currentTime(); resumeId = clip?.wp.id ?? null; dropPlayer(0); }
+  // Dual + Layer 2 on A with B still playing: B shares the same Blob, so keep the ref (dropping it frees nothing).
+  if (ROLE === 'B' || layer.value === 'L1' || mode.value === 'single' || peerYielded || cinema.value || nightWatch.value || showcase.value) setClip(null);
+  nextClip = null;
+  yielded.value = true;
+  if (had) send({ t: 'released' });
+}
+
+/** Back from dormant: resume, or get the clip back (from the other window's RAM, or one disk read on A). */
+async function wake() {
+  if (started || ROLE === 'B') keepAwake();
+  if (!yielded.value) { player?.resume(); return; }
+  if (layer.value !== 'L1' || !(started || ROLE === 'B')) { yielded.value = false; return; }
+  if (player) { player.resume(); yielded.value = false; return; }
+  if (!clip && ROLE === 'A') await ensureClip();
+  if (clip) { yielded.value = false; await playLocal(clip.blob, clip.wp, clip.wp.id === resumeId ? resumeAt : 0); }
+  else if (ROLE === 'B') send({ t: 'need-clip', wpId: resumeId, at: resumeAt });
+}
+
+/** A only: make sure `clip` holds the current wallpaper (prefetch, else ONE disk read). */
+function ensureClip(): Promise<boolean> {
+  if (clip && clip.wp.id === currentId.value) return Promise.resolve(true);
+  return (clipLoading ??= (async () => {
+    try {
+      const wp = library.value.find((w) => w.id === currentId.value);
+      if (!wp) return false;
+      if (nextClip?.wp.id === wp.id) { setClip(nextClip); nextClip = null; return true; }
+      const { blob, ms } = await readToRam(wp);
+      diskReads.value = diskReadCount(); lastReadMs.value = ms;
+      setClip({ blob, wp });
+      return true;
+    } finally { clipLoading = null; }
+  })());
+}
+
+export function setFx(patch: { cinema?: boolean; night?: boolean; showcase?: boolean }, fromPeer = false) {
+  const before = `${cinema.value}${nightWatch.value}${showcase.value}`;
+  if (patch.cinema !== undefined) cinema.value = patch.cinema;
+  if (patch.night !== undefined) nightWatch.value = patch.night;
+  if (patch.showcase !== undefined) showcase.value = patch.showcase;
+  if (!fromPeer) send({ t: 'fx', cinema: cinema.value, night: nightWatch.value, showcase: showcase.value });
+  if (before !== `${cinema.value}${nightWatch.value}${showcase.value}`) updateDormancy();
+}
+export const toggleCinema = () => setFx({ cinema: !cinema.value, night: false, showcase: false });
+export const toggleNightWatch = () => setFx({ night: !nightWatch.value, cinema: false, showcase: false });
+export const toggleShowcase = () => setFx({ showcase: !showcase.value, cinema: false, night: false });
+
+// ========================================================================= Week 2 · scenes
+const PREFETCH_MS = 3 * 60 * 1000;   // read the next scene's clip this long before it starts
+
+export function schedulerTick() {
+  if (ROLE !== 'A') return;
+  const now = new Date();
+  const list = scenes.value;
+  const cur = sceneAt(now, list);
+  activeScene.value = cur?.key ?? null;
+  const nx = nextScene(now, list);
+  nextChange.value = nx ? { label: nx.scene.label, inMs: nx.inMs, prefetched: !!nextClip && nextClip.wp.id === nx.scene.wallpaperId } : null;
+  if (!autoScenes.value || !cur) return;
+  if (cur.key !== lastScene) {
+    lastScene = cur.key;
+    if (cur.wallpaperId && cur.wallpaperId !== currentId.value && library.value.some((w) => w.id === cur.wallpaperId)) {
+      selectWallpaper(cur.wallpaperId).catch((e) => toast(String(e.message)));
+    }
+    return;
+  }
+  if (nx && nx.inMs <= PREFETCH_MS) prefetch(nx.scene);
+}
+
+async function prefetch(s: Scene) {
+  const id = s.wallpaperId;
+  if (!id || id === currentId.value || nextClip?.wp.id === id || isDormant()) return;
+  const wp = library.value.find((w) => w.id === id);
+  if (!wp) return;
+  // RAM budget (v2 §5): the playing clip and the prefetched one together stay under RAM_BUDGET_MB.
+  if (((clip?.blob.size || 0) + wp.bytes) / 2 ** 20 > RAM_BUDGET_MB) return;
+  nextClip = { blob: new Blob(), wp };            // placeholder so a second tick doesn't start a second read
+  try {
+    const { blob, ms } = await readToRam(wp);
+    diskReads.value = diskReadCount(); lastReadMs.value = ms;
+    if (nextClip?.wp.id === id) nextClip = { blob, wp };
+  } catch { nextClip = null; }
+  if (nextChange.value) nextChange.value = { ...nextChange.value, prefetched: nextClip?.wp.id === id };
+}
+
+export function setScene(key: string, patch: Partial<Pick<Scene, 'start' | 'wallpaperId'>>) {
+  scenes.value = scenes.value.map((s) => (s.key === key ? { ...s, ...patch } : s));
+  updateSettings({ scenes: scenes.value });
+  if (nextClip && patch.wallpaperId !== undefined) nextClip = null;
+  lastScene = null;                               // re-apply: an edit to the current scene takes effect now
+  schedulerTick();
+}
+
+export function setAutoScenes(on: boolean) {
+  autoScenes.value = on;
+  updateSettings({ autoScenes: on });
+  lastScene = null;
+  if (!on) nextClip = null;
+  schedulerTick();
+}
+
+// ========================================================================= Week 2 · weather
+const WEATHER_MS = 30 * 60 * 1000;
+let weatherBusy = false;
+
+async function refreshWeather() {
+  const p = place.value;
+  if (!p || weatherBusy || !navigator.onLine) return;
+  weatherBusy = true;
+  try {
+    const w = await fetchWeather(p);
+    weather.value = w; weatherError.value = '';
+    updateSettings({ lastWeather: w });
+    send({ t: 'weather', w });
+  } catch (e: any) {
+    weatherError.value = e?.message || String(e);
+  } finally { weatherBusy = false; }
+}
+
+function startWeather() {
+  if (!weather.value || Date.now() - weather.value.at > WEATHER_MS) refreshWeather();
+  setInterval(refreshWeather, WEATHER_MS);
+  window.addEventListener('online', () => { if (!weather.value || Date.now() - weather.value.at > 5 * 60000) refreshWeather(); });
+}
+
+export async function setPlace(name: string) {
+  if (!name.trim()) {
+    place.value = null; weather.value = null; weatherError.value = '';
+    updateSettings({ place: null, lastWeather: null });
+    send({ t: 'weather', w: null });
+    return;
+  }
+  try {
+    const p: Place = await geocode(name);
+    place.value = p; weatherError.value = '';
+    updateSettings({ place: p });
+    await refreshWeather();
+  } catch (e: any) {
+    weatherError.value = e?.message || String(e);
+  }
+}
+
+// ========================================================================= Week 5 · owner remote
+// The server relays an owner's phone buttons to this window (W-A); we report back what the screens are doing.
+function screenState() {
+  const sc = scenes.value.find((x) => x.key === activeScene.value);
+  return {
+    mode: mode.value, layer: layer.value, cinema: cinema.value, night: nightWatch.value, showcase: showcase.value, currentId: currentId.value,
+    wallpapers: library.value.map((w) => ({ id: w.id, name: w.name })), scene: sc?.label ?? null, autoScenes: autoScenes.value,
+  };
+}
+let lastSent = '';
+function reportScreen(force = false) {
+  const s = screenState();
+  const k = JSON.stringify(s);
+  if (!force && k === lastSent) return;
+  if (wsSend({ t: 'screen-state', s })) lastSent = k;
+}
+function startRemote() {
+  setInterval(() => reportScreen(), 1500);
+  onServerMessage('remote', (m: { cmd: string; arg: unknown; by: string }) => {
+    switch (m.cmd) {
+      case 'swap': requestSwap(); break;
+      case 'cinema': toggleCinema(); break;
+      case 'night': toggleNightWatch(); break;
+      case 'showcase': toggleShowcase(); break;
+      case 'wallpaper': if (typeof m.arg === 'string') selectWallpaper(m.arg).catch((e) => toast(String(e.message))); break;
+      case 'scene': {
+        const sc = scenes.value.find((x) => x.key === m.arg);
+        if (sc?.wallpaperId) selectWallpaper(sc.wallpaperId).catch((e) => toast(String(e.message)));
+        break;
+      }
+    }
+    if (m.cmd !== 'ping') toast(`${m.by}: ${m.cmd}`, 2500);
+    setTimeout(() => reportScreen(true), 300);
+  });
+}
+
+// ========================================================================= Week 6 · ink theme (both screens)
+function applyTheme(t: 'night' | 'ink') {
+  theme.value = t === 'ink' ? 'ink' : 'night';
+  document.documentElement.dataset.theme = theme.value;
+}
+export function setTheme(t: 'night' | 'ink') {
+  applyTheme(t);
+  updateSettings({ theme: theme.value });
+  send({ t: 'theme', theme: theme.value });
+}
+
+// ========================================================================= apps window ("Open on PC")
+// Browsers only open a new window after a tap on THIS screen. So the first time, one tap opens a named
+// "apps window" (on the wall screen when there are two); after that we keep its handle and simply point it at
+// whatever a phone asks for (navigating a window we opened needs no tap).
+let appWin: Window | null = null;
+export function launchApp(url: string): boolean {
+  if (appWin && !appWin.closed) {
+    try { appWin.location.href = url; appWin.focus(); return true; } catch { /* lost it */ }
+  }
+  return false;
+}
+/** Call from a click/tap handler. Opens (or reuses) the apps window with `url`. */
+export function launchAppWithTap(url: string): boolean {
+  if (launchApp(url)) return true;
+  let feats = '';
+  if (details && details.screens.length >= 2) {
+    const { wall } = pickScreens();
+    feats = `left=${wall.availLeft},top=${wall.availTop},width=${wall.availWidth},height=${wall.availHeight}`;
+  }
+  appWin = window.open(url, 'jharokha-apps', feats);
+  return !!appWin;
+}
+export const appWindowOpen = () => !!appWin && !appWin.closed;

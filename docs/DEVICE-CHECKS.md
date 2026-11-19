@@ -43,7 +43,7 @@ Tip: press **Copy report** in the probe after each test and paste the JSON into 
   - Loads → no client isolation ✅. Run **Ping ×20** and **Speed test**.
   - Doesn't load → client isolation. Use the v2 §3.5 plan (travel router / hotspot)
 - [ ] Repeat from 1–2 other rooms/floors (subnet check)
-- [ ] Reboot the laptop. Is the server back without you doing anything? (`systemctl --user status jharokha-probe`)
+- [ ] Reboot the laptop. Is the server back without you doing anything? (`systemctl --user status jharokha`)
 
 ## F. The real app (Week 1)
 - [ ] `http://localhost:8080/app/`, then install it (Chrome menu > Cast, save and share > Install page as app)
@@ -55,6 +55,35 @@ Tip: press **Copy report** in the probe after each test and paste the JSON into 
 - [ ] Open `/app/?debug` for the HUD and the **Auto-swap ×50** button
 - [ ] Unplug the monitor: the laptop takes the wallpaper (no disk read). Replug it: the "Monitor connected" banner appears
 - [ ] Reboot with "Restore apps: Always". Does Jharokha come back? Count the taps to get to full dual-screen
+
+## G. Week 2: coexist, scenes, weather
+- [ ] Netflix CPU baseline: Jharokha closed, Netflix fullscreen on the monitor for 5 min. Note the CPU % in Task Manager (Search+Esc)
+- [ ] Same again with Jharokha in dual-screen and Netflix covering W-B. After 2 min the W-B engine card (or `?debug` HUD) should say "released". Note the CPU % (pass: ≤ the baseline)
+- [ ] If W-B never says "released" under Netflix, ChromeOS isn't reporting occlusion. Press 🎬 Cinema (or **C**) instead and check it releases after 2 min
+- [ ] 🌙 Night Watch (**N**): both screens near-black, red clock readable but faint in a dark room; ☀ wake brings the wallpaper back
+- [ ] Schedule: set a scene to start 4 min from now with another wallpaper and turn on Auto. The card should say "already in RAM" about 3 min before, and the switch should crossfade with no stutter
+- [ ] Weather: type your city, then Set. The temperature appears on both screens
+
+## H. Week 3: server core
+- [ ] Layer 2 shows the Vitals Ring with 4 coloured arcs, and the Server panel says "● live"
+- [ ] Settings > Linux > Port forwarding: 8080 TCP is on. In the Server panel press **Set Wi-Fi IP** and type the laptop's Wi-Fi IP (Settings > Network > Wi-Fi)
+- [ ] A phone on the same Wi-Fi scans the QR: `/lan.html` loads. After that, the panel should say "Learned from a phone" if you clear the manual IP
+- [ ] In the Linux terminal: `systemctl --user stop jharokha`. Within ~4 s the red "● Server offline" badge appears and the wallpaper keeps playing. Then `systemctl --user start jharokha`: the badge goes away by itself
+- [ ] Restart the laptop. Without touching Linux, open Jharokha: the server is up (ring "Server" green). If not, open the Terminal app once and check whether it comes up
+
+## I. Week 4: access
+- [ ] `npm run show` (or `npm run pair`) in the Linux terminal: the dashboard opens and the Access card appears (it is now an owner)
+- [ ] Phone on the same Wi-Fi: **type** `http://<laptop-wifi-ip>:8080/join` in the phone's browser, or scan the QR. Type a name → "Waiting for approval"
+  - Nothing loads? In the Linux terminal: `journalctl --user -u jharokha -n 20`. No `device …` line means the phone never reached Linux: check port forwarding (§E), make sure the phone isn't on mobile data, or the hostel Wi-Fi may block device-to-device traffic (v2 §3.5: hotspot / travel router)
+- [ ] The laptop shows "<name> wants to join". Tap ✓ Collaborator: the phone shows "You're in"
+- [ ] Kill switch on: the phone page says "owner-only mode" after a refresh. Then off
+- [ ] Remove: the phone shows "Removed from the room" within 15 s
+
+## J. Week 5: room + new Layer 2
+- [ ] Laptop dashboard: tabs Home / Wallpapers / Room / System. Add a note and set the door sign on Home
+- [ ] Dual-screen: swap so the dashboard is on the monitor. It should switch to the wall layout (huge clock, sticky notes, QR) and fit with no scrolling. Readable from your bed or desk?
+- [ ] Phone (once it can reach the laptop): /join → approved → **Open the room** → add a note (it appears on the wall), upload a file (it's in Room → Drop zone)
+- [ ] If you approved the phone as **Owner**: Remote tab → Cinema / Night / Swap act on the laptop
 
 ## Results
 | Check | Result | Notes |
@@ -68,3 +97,18 @@ Tip: press **Copy report** in the probe after each test and paste the JSON into 
 | Server back after reboot | | |
 | Start: one click or two (F) | | |
 | App swap ms (median / max) | | |
+| Netflix CPU: without / with Jharokha (G) | | |
+| Auto-yield releases under Netflix (G) | | |
+| Phone scans QR → page loads (H) | | |
+| Server up after reboot, no taps (H) | | |
+| Phone joins + approved (I) | | |
+| Wall layout readable from 3 m (J) | | |
+
+## Week 7 · phone remote + utilities (on the real laptop)
+- [ ] Load the extension once: Chrome → `chrome://extensions` → Developer mode → Load unpacked → Linux files → jharokha → extension. System tab → "Phone remote for Netflix / YouTube" turns green.
+- [ ] Phone → Netflix: opens full screen on the PC; Remote: arrows move the highlight along a row, OK opens a title; play/pause, ±10 s, volume work; "Skip intro" appears and works.
+- [ ] Phone → YouTube: Type → "Search YouTube" → results; Touchpad → tap a video; it plays; full screen fills the window.
+- [ ] If the phone says Chrome is holding the sound: touch the laptop once, then check everything works from the phone again.
+- [ ] Split & Settle: "Pay with UPI" opens GPay/PhonePe on Android with the amount filled in (iPhone: needs a UPI app that accepts upi:// links).
+- [ ] Sunrise alarm overnight with Night Watch on: light starts on time, chime at the time, "I'm up" from the phone.
+- [ ] Showcase with music playing: allow the microphone once on the wall window; the ring reacts to the beat.

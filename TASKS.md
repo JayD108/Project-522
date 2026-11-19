@@ -24,6 +24,7 @@
 - [x] `server/probe-server.mjs`: zero-dep server on 0.0.0.0:8080 with `/health`, `/ping`, `/speed`, `/clips`, static files, and an SQLite WAL check
 - [x] `tools/encode.sh` (house encode standard), `scripts/setup-crostini.sh`, systemd `--user` unit
 - [x] `docs/DEVICE-CHECKS.md`: the Week 0 checklist (chrome://gpu, media-internals, port forwarding, friend's phone, Netflix + wallpaper)
+- [x] Repo cloned on the Flex laptop, `systemd --user` service installed and running (18 Nov)
 - [ ] **Run DEVICE-CHECKS on the Flex laptop** (needs you; results go into DEVLOG)
 
 ### Week 1 · App shell + dual screen (v2 W1 + v1 W1–2) ← built, waiting on the device run
@@ -39,35 +40,72 @@
 ### Consolidation (18 Nov) ✅
 - [x] One command (`npm start`), sample clips, `npm test` → single `test-run-*.log` (63 checks), SETUP.md, repo cleaned for GitHub
 
-### Week 2 · Coexist (v2 W2 + v1 W3)
-- [ ] Auto-yield (when hidden: pause; after 2 min: release the Blob), 🎬 Cinema, Night Watch
-- [ ] Scene manager + scheduler (Dawn / Ambient / Deep Work / Night), prefetch of the next scene, IndexedDB writes batched every 5 min
-- [ ] Clock + weather (Open-Meteo), compact and wall layouts chosen by screen size
-- [ ] Done when: Netflix uses no more CPU with Jharokha running than without it
+### Week 2 · Coexist (v2 W2 + v1 W3) ← built, waiting on the device run
+- [x] Auto-yield: covered (hidden) → pause at once; still covered after 2 min → drop the player AND the Blob in both windows (RAM really freed). Coming back costs one disk read on W-A, and W-B gets the clip from W-A
+- [x] 🎬 Cinema (button or **C**): Layer 1 paused, Layer 2 shrinks to a slim dim strip, toasts off, mirrored on both windows; after 2 min it also releases the clip
+- [x] 🌙 Night Watch (button or **N**): both screens near-black with a faint red clock; ☀ wake, double-click or Esc exits
+- [x] Scene scheduler (Dawn / Deep Work / Ambient / Night, editable times, a wallpaper per scene, Auto on/off). The next scene's clip is prefetched into RAM 3 min early, within the 300 MB budget, so the switch reads nothing from disk
+- [x] Settings (scenes, place, last weather) in the batched IndexedDB settings (5 min / hide / pagehide)
+- [x] Weather from Open-Meteo (city lookup, every 30 min, cached for offline, forwarded to W-B) in the header and next to the wall clock; compact/wall layouts by screen size (from Week 1)
+- [x] Tests: 8 unit tests (scheduler, weather) + 2 new browser sections (19 checks). `npm test` → 90/90 PASS on the Flex laptop (Crostini, Chromium 150 headless)
+- [ ] **On the device:** Netflix CPU with Jharokha running vs without (DEVICE-CHECKS §G). Does ChromeOS report `hidden` when Netflix covers W-B (§D)? If not, Cinema is the manual switch
+- Done when: Netflix uses no more CPU with Jharokha running than without it (device only)
 
-### Week 3 · Server core
-- [ ] Fastify + ws + `node:sqlite` WAL (checkpoint every 5 min), serving the PWA's static files
-- [ ] `systemd --user` service, port 8080 forwarded, survives a reboot
-- [ ] Layer 2 vitals: Vitals Ring (battery, Compute Pressure, network, server), server panel, "Server offline" badge, live QR with the current address
+### Week 3 · Server core ← built, waiting on the device run
+- [x] Fastify 5 + @fastify/websocket + `node:sqlite` WAL (checkpoint TRUNCATE every 5 min and on stop) serving the PWA, samples and probe. `server/index.mjs` replaces the Week 0 zero-dependency server; every old route still works
+- [x] `systemd --user` unit `jharokha.service` (the old `jharokha-probe` is removed by setup-crostini.sh). Enabled at boot, Restart=on-failure (kill -9 → back in < 3 s, checked on the laptop)
+- [x] `/ws` pushes vitals every 2 s (uptime, req/s, devices, live links, DB size, disk free, RAM, load, errors). The app reconnects with backoff
+- [x] Layer 2: Vitals Ring (Power · CPU · Network · Server, each with a reason; CPU falls back to Linux load when Compute Pressure is missing), Server panel, red "Server offline" badge (after 4 s), live QR
+- [x] QR address: manual Wi-Fi IP (settable only via http://localhost) > learned from a phone's Host header > container IP (flagged amber: phones can't use it)
+- [x] Tests: 5 unit + 4 server + 6 browser checks (including stopping and restarting the server: badge on, then off by itself) + 2 screenshots (`test-shot-week3-*.png`). `npm test` → 111/111 PASS on the laptop
+- [ ] **On the device:** port forwarding 8080 on, phone scans the QR → `/lan.html` loads; reboot ChromeOS → server back with no taps (DEVICE-CHECKS §H)
+- Done when: survives a reboot; Layer 2 shows server vitals ✅ (vitals; reboot needs you)
 
-### Week 4 · Access
-- [ ] QR join → name → approval tray → role (owner/collaborator/viewer) → HttpOnly device token (30 days, revocable)
-- [ ] Kill switch, quiet hours, audit log, per-device rate limits, max 20 users
+### Week 4 · Access ← built, waiting on the device run
+- [x] QR → `/join` phone page → name → request pops up on every Layer 2 (approval tray; a "🔔 join request" pill over the wallpaper) → owner picks Collaborator / Viewer / Owner or ✕ → phone flips to "You're in" by itself
+- [x] Device token: random 256-bit, stored hashed (SHA-256) in SQLite, sent as an `HttpOnly; SameSite=Strict` cookie, 30 days (owners slide while in use), revocable. Removing a device closes its live link at once
+- [x] Owners = requests from inside Linux (127.0.0.1) or owner devices. The laptop's Chrome pairs once: `npm run pair` (and `npm run show`) opens `/app/?pair=<one-time 10-min code>`. Replaces the Week 3 "Host: localhost" rule, which a phone could fake
+- [x] Kill switch (owner-only mode: guests get a 403 page, their sockets are closed; owners unaffected; the ChromeOS port-forward toggle itself stays manual), quiet hours (friends read-only, wraps midnight), audit log (last 2000 kept), rate limits (240 req/min per device, 6 join/pair tries per min per IP), max 20 devices
+- [x] The QR quiet zone is fixed (1 → 4 modules; checked with `zbarimg`). The QR address is learned only from approved phones. New devices are logged to journalctl for diagnosing "the phone can't reach it"
+- [x] Tests: 13 server checks (acting as a phone from the container's own address) + 7 browser checks (unpaired → pair → tray → approve → phone screen → kill → remove) + 4 screenshots. `npm test` → 133/133 PASS
+- [ ] **On the device:** a friend's phone on the same Wi-Fi joins and gets approved (DEVICE-CHECKS §I). Blocked until a phone can reach the laptop at all (§E: port forwarding / client isolation)
 
-### Week 5 · Collaborate
-- [ ] Room Board (Yjs + y-websocket), Door Sign, Drop Zone (quota, 7-day auto-delete)
-- [ ] Phone remote for owners (swap, cinema, scene, approvals)
+### Week 5 · Collaborate + Layer 2 redesign ← built, waiting on the device run
+- [x] Room Board: one Yjs doc on the server (`server/room.mjs`), synced over the existing `/ws` (state-vector handshake, offline edits resent on reconnect), saved to SQLite every 30 s and on stop. Viewers / quiet hours → edits refused (`room-readonly`). Max 60 notes
+- [x] Door Sign (owner sets: Come in / Knock first / Busy / Studying / Sleeping / Away + note) → live on every screen and phone
+- [x] Drop Zone: `PUT /api/drops` streamed to `DATA_DIR/drops` (one sequential write), 500 MB per device enforced while streaming, 7-day auto-delete + orphan sweep, uploader/owner delete, `attachment` + `nosniff` downloads
+- [x] Owner remote: phone → server → dashboard window (W-A): Swap / Cinema / Night / wallpaper / scene; W-A reports the screen state back. Collaborators can't send commands
+- [x] Phone room page `/app/room.html` (2nd Vite page): Board · Files · Remote tabs, door sign; `/join` → "Open the room"
+- [x] **Layer 2 redesign:** laptop = control centre (header + Home · Wallpapers · Room · System tabs, balanced Home); monitor ≥ 1700 px = wall display (one-line huge clock, big door sign, sticky-note board, mini vitals ring, people, "Scan to join" QR; fits 1920×1080 and 2560×1440 without scrolling). SVG icons (no missing glyphs)
+- [x] Connect-a-phone helper: big QR + live 4-step checklist (Wi-Fi IP · port forwarding · same Wi-Fi · "a phone reached this laptop" from server-side evidence) + the hotspot fallback
+- [x] Tests: 8 server checks (real Yjs clients as phones) + 11 browser checks (laptop, phone, wall at two sizes) + 6 screenshots. Bundle budget now = dashboard initial JS (87 KB; Yjs 92 KB is lazy). `npm test` → 155/155 PASS
+- [ ] **On the device:** a phone reaching the laptop at all (DEVICE-CHECKS §E/§I). No phone request has ever reached Linux so far → port forwarding or Wi-Fi isolation
 
-### Week 6 · Fun layer
-- [ ] Watch-Party queue, Cast-to-Wall (owner approves), Study Room shared Pomodoro, Game Night scoreboard
-- [ ] Showcase FX: audio-reactive canvas (30 fps cap), ink theme
+### Week 6 · Fun layer ← built
+- [x] Internet sharing (plan B for the Wi-Fi): Cloudflare quick tunnel, off by default, owner switch with a confirm step, persists, audited; strangers reach only the join flow. Installed (user-local, SHA-256 checked); public link verified from the internet
+- [x] Watch-Party queue: links (YouTube → embeddable, images, DRM sites → link only), votes reorder it, real YouTube titles via oEmbed, adder/owner remove
+- [x] Cast-to-Wall: collaborators ask → owner approves in the tray (or casts directly / from the queue) → YouTube embed / picture / link card on the wall window; the wallpaper pauses (decoder free) and comes back on Stop
+- [x] Study Room Pomodoro: one shared timer (server owns phase changes; clock-skew corrected), focus/break lengths, a soft chime on the wall (never in quiet hours / Night / Cinema), big ring on the wall
+- [x] Game Night scoreboard: players, ±, leader highlight, new round; owner clears; shown beside the sticky notes on the wall
+- [x] Ink theme (paper + brush ink, Fraunces headings, uneven hand-drawn borders), mirrored to both screens; Night Watch redesign
+- [x] Tests: 7 fun-server + 7 on-screen checks + screenshots (YouTube actually playing on the wall). `npm test` → 178/178 PASS
+- [x] Audio-reactive canvas (needs the mic + Showcase mode): moved to Week 7, built there
+- [ ] **On the device:** friends on their phones via the public link; a YouTube cast on the real monitor
 
 ### Week 7 · Utilities
-- [ ] Polls, laundry timers, Split & Settle (UPI deep links), sunrise alarm, calendar (optional)
+- [x] Polls, laundry timers, Split & Settle (UPI deep links), sunrise alarm (`server/tools.mjs`, `ui/Tools.tsx`, `ui/ToolsCards.tsx`)
+- [x] Showcase: audio-reactive canvas from the laptop mic (`ui/Showcase.tsx`, key V)
+- [x] Phone remote for Netflix / YouTube tabs: "Jharokha Remote" Chrome extension (`extension/`), D-pad, touchpad, typing, player
+- [x] Layer 1 Swap button
+- [ ] Calendar (optional, not started)
+- [ ] **On the device:** load the extension once (chrome://extensions → Load unpacked → Linux files/jharokha/extension); try Netflix from the phone; a real UPI payment link on Android + iPhone
 
 ### Week 8 · Harden
 - [ ] Nightly SQLite snapshot, thermal guard (Compute Pressure), 72 h soak (< 50 MB growth), ring-buffer logs
 - [ ] HTTPS via a domain + DNS-01 **only if you approve the purchase**
+
+## Every week, when it's done
+- Update `probe/updates.html` (newest week on top), then `npm run show`: it restarts the server and opens What's new + the app in ChromeOS Chrome on the laptop.
 
 ## Needs your decision later (not blocking)
 1. A domain for LAN HTTPS. 2. A travel router, if the hostel uses client isolation. 3. Any hosting/deploy. Nothing gets deployed without a yes.

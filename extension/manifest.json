@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Jharokha Remote",
+  "version": "1.0.0",
+  "description": "Lets approved phones in your room control Netflix, YouTube and other streaming tabs on this laptop through Jharokha.",
+  "minimum_chrome_version": "116",
+  "permissions": ["tabs", "scripting", "storage", "alarms"],
+  "host_permissions": [
+    "http://localhost/*",
+    "https://*.netflix.com/*", "https://*.primevideo.com/*", "https://*.youtube.com/*", "https://www.google.com/*",
+    "https://*.hotstar.com/*", "https://*.jiocinema.com/*", "https://*.sonyliv.com/*", "https://*.zee5.com/*",
+    "https://*.disneyplus.com/*", "https://open.spotify.com/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.netflix.com/*", "https://*.primevideo.com/*", "https://*.youtube.com/*", "https://www.google.com/*",
+        "https://*.hotstar.com/*", "https://*.jiocinema.com/*", "https://*.sonyliv.com/*", "https://*.zee5.com/*",
+        "https://*.disneyplus.com/*", "https://open.spotify.com/*"
+      ],
+      "js": ["content.js"], "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.netflix.com/*", "https://*.youtube.com/*"],
+      "js": ["page.js"], "run_at": "document_idle", "world": "MAIN"
+    }
+  ],
+  "icons": { "128": "icon-128.png" }
+}

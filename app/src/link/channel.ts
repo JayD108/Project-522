@@ -3,6 +3,7 @@
 import { ROLE, OTHER, type Role } from '../state';
 import type { LoopStats } from '../engine/loop';
 import type { Wallpaper } from '../store/library';
+import type { Weather } from '../weather';
 
 export type Msg =
   | { t: 'hello' } | { t: 'hello-ack' } | { t: 'bye' }
@@ -14,7 +15,15 @@ export type Msg =
   /** Sent by the Layer-2 window to the Layer-1 window: "hand Layer 1 over to me". */
   | { t: 'swap-request'; t0: number }
   /** New wallpaper for the window that is currently Layer 1 (crossfade, no layer change). */
-  | { t: 'play'; blob: Blob; wp: Wallpaper }
+  | { t: 'play'; blob: Blob; wp: Wallpaper; at?: number }
+  /** 🎬 Cinema / 🌙 Night Watch state, mirrored on both windows. */
+  | { t: 'fx'; cinema: boolean; night: boolean; showcase?: boolean }
+  /** Auto-yield: this window dropped its clip Blob (so the other may drop its ref too and free the RAM). */
+  | { t: 'released' }
+  /** B woke up on Layer 1 without a clip: A re-reads it (once) and sends `play`. */
+  | { t: 'need-clip'; wpId: string | null; at: number }
+  | { t: 'weather'; w: Weather | null }
+  | { t: 'theme'; theme: 'night' | 'ink' }
   | { t: 'select'; id: string }
   | { t: 'library-changed' }
   | { t: 'stats'; stats: LoopStats }

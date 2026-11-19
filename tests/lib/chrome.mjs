@@ -83,7 +83,7 @@ export class Session {
  * Launch headless Chrome. `screens` like '{1536x864}{2560x1440}' emulates multiple displays.
  * Returns { port, version, browser (Session), pageTargets(), attach(target), close() }.
  */
-export async function launch({ bin, port, screens, origin, grant = [] }) {
+export async function launch({ bin, port, screens, origin, grant = [], secureOrigins = [], extraArgs = [] }) {
   const prof = fs.mkdtempSync(path.join(os.tmpdir(), 'jhk-test-chrome-'));
   const args = [
     '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${prof}`,
@@ -91,6 +91,9 @@ export async function launch({ bin, port, screens, origin, grant = [] }) {
     '--window-size=1280,720',
   ];
   if (screens) args.push(`--screen-info=${screens}`);
+  // Tests that reach the server on a LAN address need it treated like localhost (OPFS etc. need a secure context).
+  if (secureOrigins.length) args.push(`--unsafely-treat-insecure-origin-as-secure=${secureOrigins.join(',')}`);
+  args.push(...extraArgs);
   args.push('about:blank');
   const proc = spawn(bin, args, { stdio: 'ignore' });
   let exited = null;
