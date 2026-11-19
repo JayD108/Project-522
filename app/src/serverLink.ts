@@ -8,6 +8,7 @@ export interface ServerVitals {
   disk: { freeGB: number; totalGB: number } | null; load: number[]; cpus: number;
   mem: { totalMB: number; availMB: number }; rssMB: number; node: string;
   sqlite: { ok: boolean; journal_mode?: string; reason?: string };
+  thermal?: string; thermalGuard?: boolean; lastSnapshot?: { name: string; bytes: number; at: number } | null; logLines?: number;
 }
 export interface JoinInfo {
   url: string; host: string; source: 'manual' | 'seen' | 'crostini' | 'lan' | 'tunnel';
@@ -173,4 +174,16 @@ export const leaveRoom = () => post('api/leave', {});
 export const setKill = (on: boolean) => post('api/kill', { on });
 export const setTunnel = (on: boolean) => post('api/tunnel', { on });
 export const setNetGuard = (b: { mode?: 'wifi' | 'anywhere'; trust?: string; untrust?: string }) => post('api/netguard', b);
+// Week 8 · System
+export interface Snapshot { name: string; bytes: number; at: number }
+export interface LogLine { n: number; at: number; level: 'info' | 'warn' | 'error'; text: string }
+export async function getJ<T = any>(path: string): Promise<T> {
+  const r = await fetch(api(path), { cache: 'no-store' });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+}
+export const getBackups = () => getJ<{ list: Snapshot[]; last: any; nextInMs: number; keep: number; at: string }>('api/system/backups');
+export const takeBackup = () => post('api/system/backups', {});
+export const getLogs = (level?: string, n = 150) => getJ<{ lines: LogLine[]; files: { name: string; bytes: number }[]; ring: number }>(`api/system/logs?n=${n}${level ? `&level=${level}` : ''}`);
 export const setQuiet = (q: { enabled?: boolean; start?: string; end?: string }) => post('api/quiet', q);

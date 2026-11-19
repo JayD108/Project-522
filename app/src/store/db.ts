@@ -40,10 +40,14 @@ export interface Settings {
   place: Place | null;
   lastWeather: Weather | null;  // shown at boot / offline until the next fetch
   theme: 'night' | 'ink';       // Layer 2 look (Week 6)
+  autoStack: boolean;           // swaps got slow → stack both layers on the wallpaper screen instead of swapping
+  thermalGuard: boolean;        // laptop under heavy CPU pressure → pause the wallpaper until it cools down (Week 8)
+  rotateMin: number;            // 0 = off; else the next wallpaper every N minutes
 }
 const DEFAULTS: Settings = {
   currentId: null, wallScreenLabel: null, showClockOnWall: true,
   scenes: DEFAULT_SCENES, autoScenes: false, place: null, lastWeather: null, theme: 'night',
+  autoStack: true, thermalGuard: true, rotateMin: 0,
 };
 const FLUSH_MS = 5 * 60 * 1000;
 

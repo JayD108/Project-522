@@ -685,3 +685,72 @@ a.button.primary { background: var(--accent); color: #1a140d; border-color: var(
   .banner.ding { left: 12px; right: 12px; transform: none; flex-wrap: wrap; }
 }
 body:has(.l1-swap) .toast { bottom: 88px; }
+
+/* ===================================================================== Layer 2 wallpaper switcher */
+.wp-switch { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 10px; }
+.wp-strip { list-style: none; margin: 0; padding: 2px; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: thin; min-width: 0; flex: 0 1 auto; scroll-snap-type: x proximity; }
+.wp-strip li { flex: 0 0 auto; scroll-snap-align: start; }
+.wp-thumb { display: grid; gap: 4px; padding: 3px; border-radius: 10px; background: var(--card-2); border: 2px solid transparent; color: var(--ink); width: 104px; justify-items: center; }
+.wp-thumb img, .wp-ph { width: 96px; height: 54px; border-radius: 7px; object-fit: cover; display: block; background: #0b0a09; }
+.wp-ph { display: grid; place-items: center; color: var(--muted); }
+.wp-thumb.on { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(224, 164, 88, .18); }
+.wp-tn { font-size: 12px; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-arrow { flex: 0 0 auto; width: 36px; height: 54px; padding: 0; display: grid; place-items: center; border-radius: 10px; }
+.wp-switch.wall { margin: 0; flex: 0 1 auto; max-width: 46%; }
+.wp-switch.wall .wp-thumb { width: auto; padding: 3px; }
+.wp-switch.wall .wp-thumb img, .wp-switch.wall .wp-ph { width: clamp(84px, 6.4vw, 128px); height: auto; aspect-ratio: 16 / 9; }
+.wp-switch.wall .wp-arrow { height: clamp(52px, 3.8vw, 76px); width: 44px; }
+.rotate-sel { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
+.rotate-sel select { font: inherit; font-size: 13px; color: var(--ink); background: #201d1a; border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; }
+.wp-step { align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+.wp-step button { min-height: 44px; min-width: 44px; }
+.wp-step-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.wp-step button.on { border-color: var(--accent); color: var(--accent); }
+
+/* ===================================================================== Stacked layers (swaps got slow) */
+/* The wallpaper keeps playing underneath; Layer 2 floats over it with see-through cards (no backdrop blur: that would
+   re-composite the whole video every frame on this GPU). */
+.panel.stacked { background: linear-gradient(180deg, rgba(8, 7, 6, .28), rgba(8, 7, 6, .58)); }
+.panel.stacked .card, .panel.stacked .ring-card, .panel.stacked .w-people, .panel.stacked .w-join, .panel.stacked .w-timer,
+.panel.stacked .w-poll, .panel.stacked .w-ev { background: rgba(22, 20, 17, .74); }
+.panel.stacked .w-time, .panel.stacked .cc-head { text-shadow: 0 2px 14px rgba(0, 0, 0, .55); }
+.panel.stacked .w-foot { border-top-color: rgba(255, 255, 255, .12); }
+:root[data-theme="ink"] .panel.stacked { background: linear-gradient(180deg, rgba(240, 232, 216, .25), rgba(240, 232, 216, .55)); }
+:root[data-theme="ink"] .panel.stacked .card { background-color: rgba(246, 240, 228, .82); }
+.stack-chip { position: fixed; z-index: 27; left: 50%; top: 12px; transform: translateX(-50%); display: flex; gap: 8px; align-items: center;
+  background: rgba(12, 10, 8, .72); color: var(--ink); border: 1px solid rgba(224, 164, 88, .5); border-radius: 99px; padding: 5px 6px 5px 14px; font-size: 13px; white-space: nowrap; }
+.stack-banner { display: flex; gap: 12px; align-items: center; width: max-content; max-width: min(900px, calc(100vw - 32px)); border-color: rgba(224, 164, 88, .6); z-index: 27; }
+.stack-banner span { flex: 1; font-size: 14px; }
+.thermal-badge { position: fixed; z-index: 26; right: 16px; bottom: 16px; display: flex; gap: 6px; align-items: center; background: #3a2610; color: #ffd39a;
+  border: 1px solid var(--amber); border-radius: 99px; padding: 6px 12px; font-size: 13px; }
+@media (max-width: 600px) { .stack-chip { white-space: normal; left: 12px; right: 12px; transform: none; } .stack-banner { flex-wrap: wrap; } }
+
+/* ===================================================================== Week 8 · Keep it running */
+.harden { display: grid; gap: 12px; }
+.h-row { display: flex; gap: 10px 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.h-sec { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--card-2); }
+.h-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.h-head b { display: inline-flex; gap: 6px; align-items: center; }
+.h-head select { font: inherit; font-size: 13px; color: var(--ink); background: #201d1a; border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; }
+.snap-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font: 13px ui-monospace, monospace; }
+.snap-list li { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.log-view { margin: 0; max-height: 260px; overflow: auto; font: 12px/1.45 ui-monospace, monospace; background: #0b0a09; color: #d9cfbf; padding: 10px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+:root[data-theme="ink"] .log-view { background: #f6f0e4; color: #2a241c; }
+
+/* ===================================================================== Calendar */
+.tools-cal { display: grid; gap: 12px; }
+.cal-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.cal-day { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); margin: 6px 0 2px; }
+.cal-row { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 10px; background: var(--card-2); flex-wrap: wrap; }
+.cal-ev.past .cal-row { opacity: .55; }
+.cal-time { font-variant-numeric: tabular-nums; min-width: 54px; color: var(--muted); }
+.cal-title { flex: 1 1 140px; min-width: 0; }
+.cal-add { display: grid; gap: 8px; padding: 12px; border-radius: 12px; border: 1px dashed var(--line); }
+.cal-add .row { flex-wrap: wrap; align-items: center; }
+.cal-add input, .cal-add select { font: inherit; font-size: 15px; color: var(--ink); background: #201d1a; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-height: 40px; min-width: 0; color-scheme: dark; }
+.cal-add > input { width: 100%; box-sizing: border-box; }
+:root[data-theme="ink"] .cal-add input, :root[data-theme="ink"] .cal-add select { color-scheme: light; }
+.w-cal { display: grid; gap: 8px; }
+.w-ev { display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-radius: 14px; background: var(--card); font-size: clamp(16px, 1.1vw, 22px); }
+.w-ev-day { color: var(--accent); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.w-ev b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

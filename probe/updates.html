@@ -35,7 +35,22 @@
   <a class="go alt" href="/app/?debug">Open with debug HUD</a>
 
   <section class="week new">
-    <h2>Week 7 · Tools, sunrise alarm, Showcase + full phone remote for Netflix/YouTube <span class="tag new">new</span> <span class="date">19 Nov 2026</span></h2>
+    <h2>Week 8 · Wallpaper switcher, stacked layers, backups + thermal guard <span class="tag new">new</span> <span class="date">19 Nov 2026</span></h2>
+    <ul>
+      <li><b>Change the wallpaper from Layer 2:</b> Home → <i>Now playing</i> now has a strip of posters with ◀ ▶. The monitor's wall display has the same strip in its footer, so you can tap a wallpaper from either screen. Keys <kbd>[</kbd> and <kbd>]</kbd> step through them. <i>Next every 15 min…</i> (top right of the card) rotates them for you, reading the next one into RAM 3 minutes early. On the phone: Screens card → ◀ ▶.</li>
+      <li><b>Stacked layers when swaps slow down:</b> if a swap takes over 2 s (or two in a row take over 1 s), Jharokha stops moving the video between screens. The screen with the wallpaper draws the dashboard over it, see-through, and <i>Swap</i> just shows or hides it. The other screen shows a banner with <b>Back to swapping</b>. You can also do it by hand: System → <i>Keep it running</i> → <i>Stack now</i>, or <i>Stack</i> on the phone.</li>
+      <li><b>Calendar</b> (Tools tab, laptop and phone): exams, birthdays, the plumber. The wall shows the next three, and every screen and phone gets a reminder chime before each one.</li>
+      <li><b>Nightly backup:</b> a copy of the room database every night at 03:30, the last 7 kept. <i>Snapshot now</i> takes one by hand.</li>
+      <li><b>Server log</b> in System → <i>Keep it running</i>: the last 1000 lines, with a "warnings only" filter. On disk it never grows past 4 MB.</li>
+      <li><b>Thermal guard:</b> when Chrome reports heavy CPU pressure for 20 s, the wallpaper pauses on both screens (amber badge) and comes back once the laptop has cooled down.</li>
+      <li>Fixed: <kbd>Ctrl</kbd>+<kbd>S</kbd> (or typing <kbd>s</kbd> in a drop-down) no longer swaps the screens. Picking wallpapers quickly no longer gets lost.</li>
+    </ul>
+    <div class="try"><b>Try:</b> on the Home tab, tap the other poster: the monitor changes. Then System → <i>Keep it running</i> → <i>Stack now</i>, and look at the monitor: the wall display floats over the moving wallpaper. Press <kbd>S</kbd> to hide or show it, then <b>Back to swapping</b>.<br>
+    <b>Leave running overnight:</b> <kbd>npm run soak</kbd> in the Linux terminal (72 h; <kbd>npm run soak -- --minutes=60</kbd> for an hour).</div>
+  </section>
+
+  <section class="week">
+    <h2>Week 7 · Tools, sunrise alarm, Showcase + full phone remote for Netflix/YouTube <span class="tag done">built</span> <span class="date">19 Nov 2026</span></h2>
     <ul>
       <li><b>Swap button on the wallpaper:</b> a small <i>Swap</i> button at the bottom of Layer 1 swaps the screens straight away (on one screen it says <i>Dashboard</i>).</li>
       <li><b>Netflix / YouTube open without a tap:</b> tap an app on your phone and it opens full screen on the PC.</li>

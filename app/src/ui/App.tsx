@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   DEBUG, ROLE, arming, blobMB, diskReads, layer, library, loopStats, mode, monitorBack, needMonitorTap, notice,
-  overlayOpen, screensInfo, cinema, nightWatch, swapping, showcase,
+  overlayOpen, screensInfo, cinema, nightWatch, swapping, showcase, stacked, stackOverlay,
 } from '../state';
+import { StackBanner, ThermalBadge } from './Week8';
 import { castHere, init, isWallWindow, launchApp, launchAppWithTap, openMonitorWindow, requestSwap, start, toggleFullscreen } from '../host';
 import { Icon } from './Icon';
 import { DingBanner, Sunrise } from './Tools';
@@ -46,7 +47,7 @@ export function App() {
     <>
       <div id="stage" ref={stageRef} />
       {l === 'L1' && !cinema.value && <WallOverlay />}
-      <main class={`panel ${showPanel ? '' : 'gone'} ${l === 'L1' ? 'over-video' : ''} ${arming.value ? 'arming' : ''} ${strip ? 'cinema' : ''}`} aria-hidden={!showPanel}>
+      <main class={`panel ${showPanel ? '' : 'gone'} ${l === 'L1' ? 'over-video' : ''} ${l === 'L1' && stacked.value && mode.value === 'dual' ? 'stacked' : ''} ${arming.value ? 'arming' : ''} ${strip ? 'cinema' : ''}`} aria-hidden={!showPanel}>
         {strip ? <CinemaStrip /> : l === 'start' ? <StartScreen /> : <Layer2 />}
       </main>
       {casting && castHere() && l !== 'start' && !nightWatch.value && (
@@ -65,6 +66,8 @@ export function App() {
         </div>
       )}
       {showPanel && !strip && l !== 'start' && <OfflineBadge />}
+      {l !== 'start' && !strip && !nightWatch.value && <StackBanner />}
+      {l !== 'start' && !nightWatch.value && <ThermalBadge />}
       {showPanel && !strip && l !== 'start' && <ApprovalTray />}
       {l === 'L1' && !showPanel && !cinema.value && !nightWatch.value && <RequestPill />}
       {ROLE === 'A' && openRequest.value && Date.now() - openRequest.value.at < 120000 && (
@@ -108,13 +111,17 @@ function StartScreen() {
 // --------------------------------------------------------------------------- Layer 1 extras
 function WallOverlay() {
   const st = loopStats.value;
+  const stk = mode.value === 'dual' && stacked.value;
+  const label = mode.value === 'single' || stk ? 'Dashboard' : 'Swap';
   return (
     <>
       <div class="wall-clock"><Clock size="small" /><WeatherLine compact /></div>
-      <button class="l1-swap" onClick={(e) => { e.stopPropagation(); requestSwap(); }} disabled={swapping.value}
-        title={mode.value === 'single' ? 'Show the dashboard (S)' : 'Swap screens (S)'}>
-        <Icon name={mode.value === 'single' ? 'image' : 'swap'} size={20} />{mode.value === 'single' ? 'Dashboard' : 'Swap'}
-      </button>
+      {!(stk && stackOverlay.value) && (
+        <button class="l1-swap" onClick={(e) => { e.stopPropagation(); requestSwap(); }} disabled={swapping.value}
+          title={label === 'Dashboard' ? 'Show the dashboard (S)' : 'Swap screens (S)'}>
+          <Icon name={stk ? 'layers' : mode.value === 'single' ? 'image' : 'swap'} size={20} />{label}
+        </button>
+      )}
       {DEBUG && st && (
         <div class="hud">
           {st.width}×{st.height} · {st.fps} fps · dropped {st.dropped}/{st.totalDecoded}<br />

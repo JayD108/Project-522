@@ -13,6 +13,7 @@
     "test": "node tests/run-all.mjs",
     "test:quick": "node tests/run-all.mjs --no-browser",
     "show": "bash scripts/show.sh",
+    "soak": "node scripts/soak.mjs",
     "pair": "bash scripts/pair.sh",
     "tunnel:install": "bash scripts/install-tunnel.sh",
     "tunnel:off": "bash scripts/tunnel-off.sh"

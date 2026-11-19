@@ -112,3 +112,10 @@ Tip: press **Copy report** in the probe after each test and paste the JSON into 
 - [ ] Split & Settle: "Pay with UPI" opens GPay/PhonePe on Android with the amount filled in (iPhone: needs a UPI app that accepts upi:// links).
 - [ ] Sunrise alarm overnight with Night Watch on: light starts on time, chime at the time, "I'm up" from the phone.
 - [ ] Showcase with music playing: allow the microphone once on the wall window; the ring reacts to the beat.
+
+## Week 8 · harden + stacked layers (on the real laptop)
+- [ ] `npm run soak` overnight (or the full 72 h): result in `data/soak/*.json` → `"pass": true`; note server/Chrome growth here. (Headless Chromium in Crostini decodes in software; the real ChromeOS Chrome uses the GPU.)
+- [ ] Real Compute Pressure: run something heavy (e.g. a 4K YouTube video + a big compile) for a minute. Does System → Keep it running show "CPU pressure: serious", and does the wallpaper pause with the amber badge? Does it come back ~1 min after?
+- [ ] Next morning: `ls ~/.local/share/jharokha/backups/` has a snapshot from 03:30 IST.
+- [ ] Stacked layers on the real monitor: System → *Stack now*. The monitor shows the wall display over the moving wallpaper. Is it readable from 3 m? Does the video still play smoothly (no stutter compared with plain Layer 1)?
+- [ ] Wallpaper switcher: tap a poster on the monitor's wall display → the laptop's wallpaper changes in < 1 s.

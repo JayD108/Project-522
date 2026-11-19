@@ -53,10 +53,12 @@ export function createTools({ kvGet, kvSet, now = () => Date.now(), onChange = (
     timers: [],       // { id, label, minutes, endsAt, by, byDev, done, doneAt }
     expenses: [],     // { id, kind: 'expense'|'settle', what, amount, paidBy, split: [key], by, byDev, at } (settle: paidBy → split[0])
     upi: {},          // key → { vpa, name }
+    events: [],       // { id, title, at, allDay, remind, reminded, by, byDev } (Week 7 calendar; `at` = epoch ms from the phone's clock)
     alarm: { on: false, time: '07:00', days: [1, 2, 3, 4, 5], rampMin: 15, sound: true, by: null, dismissedAt: 0, snoozeUntil: 0 },
   });
   let s = { ...blank(), ...(kvGet('tools') || {}) };
   s.alarm = { ...blank().alarm, ...s.alarm };
+  if (!Array.isArray(s.events)) s.events = [];
   let dirty = false, timer = null;
   const changed = () => {
     dirty = true;
@@ -92,7 +94,7 @@ export function createTools({ kvGet, kvSet, now = () => Date.now(), onChange = (
     polls: s.polls, timers: s.timers,
     expenses: s.expenses.slice(-60).map((e) => ({ ...e, paidByName: nameOf(e.paidBy), splitNames: e.split.map(nameOf) })),
     upi: Object.fromEntries(Object.entries(s.upi).map(([k, v]) => [k, v.vpa])),
-    money: money(), people: people(), alarm: s.alarm, serverNow: now(),
+    money: money(), people: people(), alarm: s.alarm, events: s.events, serverNow: now(),
   });
 
   // ---------------------------------------------------------------- polls
@@ -201,6 +203,30 @@ export function createTools({ kvGet, kvSet, now = () => Date.now(), onChange = (
     return { ok: true };
   }
 
+  // ---------------------------------------------------------------- room calendar (Week 7, optional)
+  // Exams, the mess menu change, a birthday. The phone/laptop turns its local date + time into epoch ms, so the
+  // server (UTC in Crostini) never has to know the time zone. A reminder rings every screen `remind` minutes before.
+  function addEvent({ title, at, allDay, remind }, who) {
+    const text = clean(title, 80);
+    const when = Math.round(+at);
+    if (!text) return err('What is it?');
+    if (!Number.isFinite(when) || when < now() - 86_400_000 || when > now() + 366 * 86_400_000) return err('Pick a date within the next year');
+    if (s.events.length >= 100) return err('100 events already: remove old ones first');
+    const r = [0, 5, 10, 15, 30, 60, 120, 1440].includes(+remind) ? +remind : 10;
+    const ev = { id: id(), title: text, at: when, allDay: !!allDay, remind: allDay ? 0 : r, reminded: false, by: who.name, byDev: who.key };
+    s.events.push(ev);
+    s.events.sort((a, b) => a.at - b.at);
+    changed();
+    return { ok: true, event: ev };
+  }
+  function deleteEvent(eid, who, owner) {
+    const e = s.events.find((x) => x.id === eid);
+    if (!e) return err('No such event', 404);
+    if (!mayEdit(e, who, owner)) return err('Only whoever added it (or an owner) can remove it', 403);
+    s.events = s.events.filter((x) => x !== e); changed();
+    return { ok: true };
+  }
+
   // ---------------------------------------------------------------- sunrise alarm
   // The wall works out the local time (the server in Linux may run on UTC); the server only keeps the settings and
   // when someone last pressed "I'm up" / "Snooze", so every screen and phone agrees.
@@ -231,8 +257,13 @@ export function createTools({ kvGet, kvSet, now = () => Date.now(), onChange = (
     const before = s.timers.length;
     s.timers = s.timers.filter((x) => !x.done || t - x.doneAt < 30 * MIN);      // finished ones stay 30 min
     for (const p of s.polls) if (!p.closed && p.closesAt && p.closesAt <= t) { p.closed = true; any = true; }
-    if (any || before !== s.timers.length) changed();
+    for (const e of s.events) {
+      if (!e.reminded && e.remind > 0 && e.at - e.remind * MIN <= t && e.at > t - MIN) { e.reminded = true; any = true; onDing({ kind: 'event', label: e.title, by: e.by, byDev: e.byDev, at: e.at }); }
+    }
+    const evBefore = s.events.length;
+    s.events = s.events.filter((e) => e.at > t - (e.allDay ? 2 : 1) * 1440 * MIN);   // past events drop off after a day
+    if (any || before !== s.timers.length || evBefore !== s.events.length) changed();
   }
 
-  return { view, save, tick, createPoll, votePoll, closePoll, deletePoll, startTimer, cancelTimer, addExpense, settle, deleteExpense, clearSettled, setUpi, setAlarm, alarmAction };
+  return { view, save, tick, createPoll, votePoll, closePoll, deletePoll, startTimer, cancelTimer, addExpense, settle, deleteExpense, clearSettled, setUpi, setAlarm, alarmAction, addEvent, deleteEvent };
 }

@@ -9,7 +9,7 @@ import { CastBox, MediaRemote, PomoCard, Scoreboard, WatchQueue } from '../ui/Fu
 import { AppTiles } from '../ui/Apps';
 import { AppRemote, RemoteHelperSetup } from '../ui/AppRemote';
 import { DingBanner, alarmPhase } from '../ui/Tools';
-import { AlarmCard, PollsCard, SplitCard, TimersCard } from '../ui/ToolsCards';
+import { AlarmCard, CalendarCard, PollsCard, SplitCard, TimersCard } from '../ui/ToolsCards';
 
 type Tab = 'home' | 'share' | 'board' | 'fun' | 'tools' | 'people';
 const TABS: { k: Tab; label: string; icon: string }[] = [
@@ -105,6 +105,7 @@ export function RoomApp() {
           <section class="rp-card"><h2><Icon name="check" size={16} /> Polls</h2><PollsCard you={info?.you} canWrite={canWrite} /></section>
           <section class="rp-card"><h2><Icon name="calendar" size={16} /> Laundry timers</h2><TimersCard you={info?.you} canWrite={canWrite} /></section>
           <section class="rp-card"><h2><Icon name="people" size={16} /> Split & Settle</h2><SplitCard you={info?.you} canWrite={canWrite} /></section>
+          <section class="rp-card"><h2><Icon name="calendar" size={16} /> Calendar</h2><CalendarCard you={info?.you} canWrite={canWrite} /></section>
           <section class="rp-card"><h2><Icon name="sun" size={16} /> Sunrise alarm</h2><AlarmCard /></section>
         </div>
       )}
@@ -189,8 +190,15 @@ function ScreensCard() {
         <button class={`rbtn ${s.night ? 'on' : ''}`} disabled={!started} aria-pressed={s.night} onClick={() => sendRemote('night')}><Icon name="night" size={24} />Night</button>
         <button class={`rbtn ${s.showcase ? 'on' : ''}`} disabled={!started} aria-pressed={!!s.showcase} onClick={() => sendRemote('showcase')}><Icon name="music" size={24} />Showcase</button>
       </div>
+      {s.thermal?.guard && <p class="small amber"><Icon name="thermo" size={14} /> The laptop is working hard: the wallpaper is paused until it cools down.</p>}
+      <div class="row wp-step">
+        <button disabled={!s.wallpapers.length} onClick={() => sendRemote('wallpaper', 'prev')} aria-label="Previous wallpaper"><Icon name="prev" size={18} /></button>
+        <span class="wp-step-name">{s.wallpapers.find((w) => w.id === s.currentId)?.name ?? '—'}</span>
+        <button disabled={!s.wallpapers.length} onClick={() => sendRemote('wallpaper', 'next')} aria-label="Next wallpaper"><Icon name="next" size={18} /></button>
+        {s.mode === 'dual' && <button class={s.stacked ? 'on' : ''} aria-pressed={!!s.stacked} disabled={!started} onClick={() => sendRemote('stack')} title="Both layers on one screen"><Icon name="layers" size={18} /> Stack</button>}
+      </div>
       <details class="wp-pick">
-        <summary>Wallpaper: {s.wallpapers.find((w) => w.id === s.currentId)?.name ?? '—'}</summary>
+        <summary>All wallpapers ({s.wallpapers.length})</summary>
         <ul class="wp-remote">
           {s.wallpapers.map((w) => <li key={w.id}><button class={w.id === s.currentId ? 'on' : ''} onClick={() => sendRemote('wallpaper', w.id)}>{w.name}</button></li>)}
         </ul>

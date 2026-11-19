@@ -5,10 +5,11 @@ A live video wallpaper and dual-screen room host for a spare ChromeOS Flex lapto
 ```bash
 npm start      # install + build + serve → open http://localhost:8080/app/
 npm test       # full automated check → test-run-<timestamp>.log
+npm run soak   # 72 h soak (or: npm run soak -- --minutes=30) → data/soak/
 ```
 **Setup (Windows dev, and ChromeOS Flex/Crostini): [SETUP.md](SETUP.md)**
 
-## What works now (Weeks 0–6)
+## What works now (Weeks 0–8)
 - **Video engine:** a clip is read from disk once into a RAM Blob, then looped seamlessly on two `<video>` elements that hand off at the end (H.264/VP9; AV1 is refused).
 - **Library:** clips are imported into the browser's private file storage (OPFS) with a codec check. Two sample clips are included.
 - **Dual screen:** the dashboard sits on the laptop and the wallpaper on the monitor. ⇄ Swap hands the Blob between windows in memory (~100 ms, zero disk reads).
@@ -19,6 +20,10 @@ npm test       # full automated check → test-run-<timestamp>.log
 - **Access (Week 4):** QR → name → owner approves on the dashboard → role + 30-day device cookie. Kill switch, quiet hours, audit log, rate limits. Pair the laptop once with `npm run pair`.
 - **Room (Week 5):** live Room Board (Yjs), Door Sign, Drop Zone (7 days, 500 MB/device), phone room page with an owner remote. Layer 2 redesigned: tabbed control centre on the laptop, glanceable wall display on the monitor.
 - **Fun (Week 6):** watch-party queue with votes, cast-to-wall (owner approves; YouTube plays on the monitor), shared study-room timer, game-night scoreboard, ink theme. Phones can join over the internet (Cloudflare link, off by default).
+- **Utilities (Week 7):** polls, laundry timers, Split & Settle (UPI links), sunrise alarm, room calendar with reminders, audio-reactive Showcase, and a phone remote for Netflix/YouTube tabs (`extension/`).
+- **Layer 2 wallpaper switcher:** poster strip with ◀ ▶ on the laptop's Home tab and in the wall display's footer, keys **[** / **]**, optional rotation (next clip every N minutes, prefetched), and prev/next from the phone.
+- **Stacked layers:** if swaps get slow (one over 2 s, two in a row over 1 s, or a 3 s timeout), the wallpaper stops moving between screens. The screen that has it draws Layer 2 over it, and Swap shows or hides that panel. "Back to swapping" undoes it; it can also be switched on by hand.
+- **Harden (Week 8):** nightly SQLite snapshot (03:30 laptop time, 7 kept, `data/backups/`), ring-buffer server log (System tab; `data/logs/`, ≤ 4 MB on disk), thermal guard (Compute Pressure "serious/critical" → wallpaper paused on both screens), `npm run soak` (72 h memory soak; < 50 MB growth).
 - **PWA:** installable, with the offline app shell, wake lock, and settings in IndexedDB (writes batched).
 
 ## Layout

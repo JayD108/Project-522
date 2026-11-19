@@ -1,12 +1,12 @@
 // Week 7 · Tools tab cards (laptop: loaded when the tab opens; phone: part of the room page).
 import { useState } from 'preact/hooks';
 import {
-  alarmDo, alarmSet, expenseAdd, expenseDelete, pollClose, pollCreate, pollDelete, pollVote, serverNowT,
+  alarmDo, alarmSet, eventAdd, eventDelete, expenseAdd, expenseDelete, pollClose, pollCreate, pollDelete, pollVote, serverNowT,
   settleRecord, splitClear, timerCancel, timerStart, tools, upiSet, type Alarm, type Poll, type Timer,
 } from '../room/roomClient';
 import { me } from '../serverLink';
 import { Icon } from './Icon';
-import { DAYS, DAY_NAMES, alarmPhase, mmss, nextAlarmText, rupees, run, useTick } from './Tools';
+import { DAYS, DAY_NAMES, alarmPhase, dayLabel, hhmm, mmss, nextAlarmText, rupees, run, useTick } from './Tools';
 
 // ---------------------------------------------------------------- polls
 export function PollsCard({ you, canWrite }: { you?: string | null; canWrite: boolean }) {
@@ -265,3 +265,65 @@ export function AlarmCard() {
   );
 }
 
+
+// ---------------------------------------------------------------- room calendar
+const pad = (n: number) => String(n).padStart(2, '0');
+const isoDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+export function CalendarCard({ you, canWrite }: { you?: string | null; canWrite: boolean }) {
+  const t = tools.value;
+  const owner = !!me.value?.owner;
+  const [title, setTitle] = useState('');
+  const [day, setDay] = useState(() => isoDay(new Date()));
+  const [time, setTime] = useState('');
+  const [remind, setRemind] = useState(10);
+  const [err, setErr] = useState('');
+  useTick(30000);
+  if (!t) return null;
+  const events = t.events || [];
+  const submit = (e: Event) => {
+    e.preventDefault();
+    const [y, m, d] = day.split('-').map(Number);
+    if (!y || !m || !d) { setErr('Pick a date'); return; }
+    const [hh, mm] = (time || '00:00').split(':').map(Number);
+    const at = new Date(y, m - 1, d, time ? hh : 0, time ? mm : 0).getTime();    // this device's local time → epoch ms
+    run(eventAdd({ title, at, allDay: !time, remind }), setErr, () => { setTitle(''); setTime(''); });
+  };
+  let lastDay = '';
+  return (
+    <div class="tools-cal">
+      {!events.length && <p class="muted small">Nothing coming up. Add exams, a birthday, the plumber… the wall shows the next ones and rings a reminder.</p>}
+      <ul class="cal-list">
+        {events.map((e) => {
+          const dl = dayLabel(e.at);
+          const head = dl !== lastDay ? (lastDay = dl) : null;
+          return (
+            <li key={e.id} class={`cal-ev ${e.at < Date.now() && !e.allDay ? 'past' : ''}`}>
+              {head && <div class="cal-day">{head}</div>}
+              <div class="cal-row">
+                <span class="cal-time">{e.allDay ? 'All day' : hhmm(e.at)}</span>
+                <b class="cal-title">{e.title}</b>
+                <span class="tiny muted">{e.by}{e.remind ? ` · reminder ${e.remind >= 60 ? `${e.remind / 60} h` : `${e.remind} min`} before` : ''}</span>
+                {canWrite && (owner || e.byDev === you) && <button class="icon-btn" aria-label={`Remove ${e.title}`} onClick={() => run(eventDelete(e.id), setErr)}><Icon name="x" size={16} /></button>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {canWrite && (
+        <form class="cal-add" onSubmit={submit}>
+          <input value={title} placeholder="What's happening? (Maths exam…)" aria-label="Event" onInput={(e) => setTitle((e.target as HTMLInputElement).value)} />
+          <div class="row">
+            <input type="date" value={day} aria-label="Date" onInput={(e) => setDay((e.target as HTMLInputElement).value)} />
+            <input type="time" value={time} aria-label="Time (empty = all day)" onInput={(e) => setTime((e.target as HTMLInputElement).value)} />
+            <select value={remind} aria-label="Reminder" disabled={!time} onChange={(e) => setRemind(+(e.target as HTMLSelectElement).value)}>
+              <option value={0}>No reminder</option><option value={5}>5 min before</option><option value={10}>10 min before</option><option value={30}>30 min before</option>
+              <option value={60}>1 h before</option><option value={1440}>1 day before</option>
+            </select>
+            <button type="submit" class="primary">Add</button>
+          </div>
+        </form>
+      )}
+      {err && <p class="small warn">{err}</p>}
+    </div>
+  );
+}

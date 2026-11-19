@@ -198,6 +198,7 @@ try {
     const b0 = await run('npm', ['run', 'build'], APP);
     check('npm run build', b0.code === 0, 'built', tail(b0.out, 30));
     if (ONLY === 'appremote' && chromeBin && b0.code === 0) await appRemoteTests(chromeBin);
+    if (ONLY === 'week8') { await week8ServerTests(); if (chromeBin && b0.code === 0) await week8BrowserTests(chromeBin); }
     if (ONLY === 'week7') { await week7ServerTests(); if (chromeBin && b0.code === 0) await week7BrowserTests(chromeBin); }
     throw Object.assign(new Error('only'), { only: true });
   }
@@ -380,6 +381,8 @@ try {
   if (chromeBin && built) await appRemoteTests(chromeBin);
   await week7ServerTests();
   if (chromeBin && built) await week7BrowserTests(chromeBin);
+  await week8ServerTests();
+  if (chromeBin && built) await week8BrowserTests(chromeBin);
   exitCode = 0;
 } catch (e) {
   if (e.only) { /* --only run finished */ } else {
@@ -2485,5 +2488,265 @@ async function week7BrowserTests(chromeBin) {
       return on && lit > 20 && paused && off ? { detail: `mic connected · ${lit} lit samples · wallpaper paused · exited` } : { ok: false, reason: JSON.stringify({ on, lit, paused, off, src: await dash.ev(`document.querySelector('.showcase')?.dataset.src`) }) };
     });
     check('no uncaught page errors (laptop + phone)', dash.errors.length === 0 && ph.errors.length === 0, 'none', [...dash.errors, ...ph.errors].slice(0, 3).join(' | '));
+  } finally { S.proc.kill(); }
+}
+
+// =============================================================================== Week 8 · harden + calendar
+async function week8ServerTests() {
+  section('WEEK 8 · HARDEN SERVER: ring-buffer logs, nightly snapshots, calendar');
+  const H = await import(pathToFileURL(path.join(ROOT, 'server', 'harden.mjs')).href);
+  await timed('log ring keeps the last N lines; the file rotates at its size limit and keeps 3 old files', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jhk-test-logs-'));
+    const L = H.createLogRing({ dir, max: 50, fileMax: 2000 });
+    for (let i = 0; i < 400; i++) L.add(i % 50 === 0 ? 'error' : 'info', [`line ${i}`, { n: i }]);
+    const t = L.tail({ n: 1000 });
+    const errs = L.tail({ level: 'warn' });
+    const files = fs.readdirSync(dir).sort();
+    const total = files.reduce((a, f) => a + fs.statSync(path.join(dir, f)).size, 0);
+    const ok = t.length === 50 && t.at(-1).text.startsWith('line 399') && errs.every((e) => e.level === 'error') && files.length === 4 && total < 4 * 2000 + 200;
+    return ok ? { detail: `ring ${t.length} lines · files ${files.join(', ')} (${total} B)` } : { ok: false, reason: JSON.stringify({ n: t.length, last: t.at(-1), files, total }) };
+  });
+  await timed('snapshot clock: next 03:30 in the laptop\'s time zone (Crostini runs UTC)', async () => {
+    const now = Date.UTC(2026, 10, 19, 20, 0);                 // 20:00 UTC = 01:30 IST next day
+    const ist = H.msUntil('03:30', now, 330) / 60000, utc = H.msUntil('03:30', now, 0) / 60000;
+    return ist === 120 && utc === 450 ? { detail: `IST: in ${ist} min · UTC: in ${utc} min` } : { ok: false, reason: JSON.stringify({ ist, utc }) };
+  });
+  const ip = outsideIp();
+  if (!ip) { skip('API checks', 'no non-loopback IPv4 address'); return; }
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jhk-test-w8-'));
+  const S = await startW4Server({ JHK_DATA: dataDir, JHK_SNAP_KEEP: '2', JHK_MINUTE_MS: '400', JHK_TOOLS_TICK_MS: '100' });
+  const P = `http://${ip}:${S.port}`;
+  const own = (p, body, method) => fetch(S.owner + p, { method: method || (body === undefined ? 'GET' : 'POST'), headers: body === undefined ? {} : { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }).then(async (r) => ({ status: r.status, j: await r.json().catch(() => null) }));
+  try {
+    await timed('server log: startup lines are in the ring (owner API) and in data/logs/jharokha.log', async () => {
+      const r = await own('/api/system/logs?n=50');
+      const file = path.join(dataDir, 'logs', 'jharokha.log');
+      const txt = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+      const ok = r.status === 200 && r.j.lines.some((l) => /listening on/.test(l.text)) && /listening on/.test(txt);
+      return ok ? { detail: `${r.j.ring} lines in RAM · ${r.j.files.map((f) => f.name).join(', ')}` } : { ok: false, reason: JSON.stringify({ status: r.status, n: r.j?.lines?.length, txt: txt.slice(0, 200) }) };
+    });
+    await timed('snapshot now ×3 (keep = 2): consistent copies that open with SQLite; the oldest is pruned', async () => {
+      await own('/api/tools/poll', { q: 'Snapshot me?', options: ['a', 'b'] });
+      await sleep(10500);                                       // tools save to kv at most every 10 s
+      const names = [];
+      for (let i = 0; i < 3; i++) { const r = await own('/api/system/backups', {}); if (r.status !== 200) return { ok: false, reason: JSON.stringify(r) }; names.push(r.j.snapshot.name); await sleep(1100); }
+      const st = (await own('/api/system/backups')).j;
+      const { DatabaseSync } = await import('node:sqlite');
+      const d = new DatabaseSync(path.join(dataDir, 'backups', st.list[0].name), { readOnly: true });
+      const row = d.prepare(`SELECT v FROM kv WHERE k = 'tools'`).get();
+      d.close();
+      const mode = (fs.statSync(path.join(dataDir, 'backups', st.list[0].name)).mode & 0o777).toString(8);
+      const ok = st.list.length === 2 && st.list[0].name === names[2] && !st.list.some((x) => x.name === names[0]) && /Snapshot me/.test(row?.v || '') && mode === '600';
+      return ok ? { detail: `${st.list.map((x) => x.name).join(', ')} · poll inside · mode ${mode} · next nightly in ${Math.round(st.nextInMs / 3600000)} h` } : { ok: false, reason: JSON.stringify({ names, list: st.list, row: !!row, mode }) };
+    });
+    const asha = await approvedPhone(P, S.owner, 'Asha', 'collaborator');
+    const dev = await approvedPhone(P, S.owner, 'Dev', 'collaborator');
+    await timed('a phone cannot read logs or take snapshots (owners only)', async () => {
+      const a = await asha.req('/api/system/logs'), b = await asha.req('/api/system/backups', {});
+      return a.status === 403 && b.status === 403 ? { detail: '403 / 403' } : { ok: false, reason: `${a.status} / ${b.status}` };
+    });
+    await timed('calendar: a phone adds an event; bad dates refused; only the adder or an owner removes it', async () => {
+      const good = await asha.req('/api/tools/event', { title: 'Maths exam', at: Date.now() + 2 * 86400e3, allDay: false, remind: 60 });
+      const bad1 = await asha.req('/api/tools/event', { title: 'Too far', at: Date.now() + 400 * 86400e3 });
+      const bad2 = await asha.req('/api/tools/event', { title: '', at: Date.now() + 3600e3 });
+      const id = good.j?.event?.id;
+      const v = (await own('/api/tools')).j;
+      const byDev = await dev.req(`/api/tools/event/${id}`, undefined, 'DELETE');
+      const byOwner = await own(`/api/tools/event/${id}`, undefined, 'DELETE');
+      const after = (await own('/api/tools')).j.events.length;
+      const ok = good.status === 200 && bad1.status === 400 && bad2.status === 400 && v.events.some((e) => e.title === 'Maths exam' && e.by === 'Asha') && byDev.status === 403 && byOwner.status === 200 && after === 0;
+      return ok ? { detail: 'added · 400 for a date next year / no title · Dev 403 · owner removed it' } : { ok: false, reason: JSON.stringify({ good: good.status, bad1: bad1.status, bad2: bad2.status, byDev: byDev.status, byOwner: byOwner.status, after }) };
+    });
+    await timed('calendar reminder rings every phone before the event; past events drop off', async () => {
+      const live = await dev.ws();
+      // "a minute" is 0.4 s here: remind 5 min = 2 s before an event 3 s away → rings after ~1 s
+      await asha.req('/api/tools/event', { title: 'Plumber', at: Date.now() + 3000, allDay: false, remind: 5 });
+      await sleep(2500);
+      const ding = live.msgs.find((m) => m.t === 'tools-ding' && m.kind === 'event');
+      live.w?.close();
+      return ding?.label === 'Plumber' && ding.at > Date.now() - 5000 ? { detail: `"${ding.label}" reminder on Dev's phone` } : { ok: false, reason: JSON.stringify(live.msgs.map((m) => m.t)) };
+    });
+    await timed('vitals carry the Week 8 fields (thermal, last snapshot, log size)', async () => {
+      const v = (await own('/api/vitals')).j;
+      return v.thermal && v.lastSnapshot?.name && v.logLines > 0 ? { detail: `thermal ${v.thermal} · last snapshot ${v.lastSnapshot.name} · ${v.logLines} log lines` } : { ok: false, reason: JSON.stringify({ t: v.thermal, s: v.lastSnapshot, l: v.logLines }) };
+    });
+  } finally { S.proc.kill(); }
+}
+
+async function week8BrowserTests(chromeBin) {
+  await freeChromes();
+  section('LAYER 2 WALLPAPER SWITCHER · STACKED LAYERS WHEN SWAPS GET SLOW · THERMAL GUARD (dual screen)');
+  const S = await startW4Server({});
+  const base = `http://localhost:${S.port}`;
+  let c, A, B = null;
+  try {
+    try { ({ c, page: A } = await openApp(chromeBin, base, { screens: '{1536x864}{2560x1440}', grant: ['window-management'] })); }
+    catch (e) { fail('launch Chrome with two displays', e.message); return; }
+    await A.ev(`__jhk.loadSamples()`, 60000);
+    await timed('imported wallpapers get a poster thumbnail (small JPEG, made from RAM at import)', async () => {
+      const t = await A.ev(`__jhk.state.library.value.map(w => w.thumb ? w.thumb.length : 0)`);
+      return t.length >= 2 && t.every((n) => n > 500 && n < 40000) ? { detail: `${t.length} posters · ${t.map((n) => `${(n / 1024).toFixed(1)} KB`).join(', ')}` } : { ok: false, reason: JSON.stringify(t) };
+    });
+    await A.ev(`__jhk.start()`, 20000);
+    await sleep(500);
+    if (await A.ev(`__jhk.state.needMonitorTap.value`)) await A.ev(`__jhk.openMonitorWindow()`);
+    let bt = null;
+    for (let i = 0; i < 30 && !bt; i++) { bt = (await c.pageTargets()).find((t) => t.url.includes('w=B')); if (!bt) await sleep(200); }
+    if (!bt) { fail('monitor window opens', 'W-B never opened'); return; }
+    B = await c.attach(bt);
+    await A.until(`__jhk.state.mode.value === 'dual' && __jhk.state.layer.value === 'L2'`, 15000);
+    await B.until(`__jhk.state.layer.value === 'L1' && __jhk.state.loopStats.value?.fps > 0`, 10000);
+    // the laptop panel (1536×864): control-centre layout; the monitor window stays 2560×1440 (wall display)
+    await A.send('Emulation.setDeviceMetricsOverride', { width: 1536, height: 864, deviceScaleFactor: 1, mobile: false });
+    await B.send('Emulation.setDeviceMetricsOverride', { width: 2560, height: 1440, deviceScaleFactor: 1, mobile: false });
+    await sleep(300);
+    const lib = await A.ev(`__jhk.state.library.value.map(w => w.id)`);
+    const srcB = () => B.ev(`[...document.querySelectorAll('video')].find(v => v.closest('.shown') || v.classList.contains('shown') || !v.paused)?.src || document.querySelector('video')?.src`);
+    await A.ev(TAB('Home'));
+    await timed('Layer 2 (laptop, Home): the switcher shows every wallpaper; clicking one changes the monitor\'s wallpaper (1 disk read)', async () => {
+      await A.until(`document.querySelectorAll('.wp-switch .wp-thumb').length === ${lib.length}`, 5000);
+      const r0 = await A.ev('__jhk.state.diskReads.value');
+      const cur0 = await A.ev('__jhk.state.currentId.value');
+      const s0 = await srcB();
+      const target = lib.find((id) => id !== cur0);
+      await A.ev(`[...document.querySelectorAll('.wp-switch .wp-thumb')][${lib.indexOf(target)}].click()`);
+      const changed = await A.until(`__jhk.state.currentId.value === ${JSON.stringify(target)}`, 5000);
+      const played = await B.until(`[...document.querySelectorAll('video')].some(v => v.src && v.src !== ${JSON.stringify(s0)} && v.currentTime > 0.1)`, 8000);
+      const on = await A.ev(`document.querySelector('.wp-switch .wp-thumb.on')?.getAttribute('aria-label')`);
+      const reads = (await A.ev('__jhk.state.diskReads.value')) - r0;
+      await shotPng(A, 'stack-laptop-switcher');
+      return changed && played && reads === 1 ? { detail: `${on} · now playing on the monitor · ${reads} disk read` } : { ok: false, reason: JSON.stringify({ changed, played, reads, on }) };
+    });
+    await timed('keys ] and [ step through wallpapers; typing in a field never triggers a shortcut', async () => {
+      const cur0 = await A.ev('__jhk.state.currentId.value');
+      await A.ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: ']' }))`);
+      const moved = await A.until(`__jhk.state.currentId.value !== ${JSON.stringify(cur0)}`, 5000);
+      await A.ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: '[' }))`);
+      const back = await A.until(`__jhk.state.currentId.value === ${JSON.stringify(cur0)}`, 5000);
+      const l0 = await A.ev('__jhk.state.layer.value');
+      await A.ev(`(() => { const s = document.querySelector('.rotate-sel select'); s.focus(); s.dispatchEvent(new KeyboardEvent('keydown', { key: 's', bubbles: true })); })()`);
+      await A.ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true }))`);
+      await sleep(900);
+      const l1 = await A.ev('__jhk.state.layer.value');
+      return moved && back && l0 === l1 ? { detail: '] next · [ back · "s" in a select and Ctrl+S ignored' } : { ok: false, reason: JSON.stringify({ moved, back, l0, l1 }) };
+    });
+    const layers = async () => [await A.ev('__jhk.state.layer.value'), await B.ev('__jhk.state.layer.value')];
+    const swapOnce = async () => { const n0 = await A.ev('__jhk.state.swaps.value.length'); await A.ev('__jhk.swap()'); const ok = await A.until(`__jhk.state.swaps.value.length > ${n0}`, 5000, 50); await sleep(500); return ok; };
+    await swapOnce();     // monitor → Layer 2 (wall display)
+    await timed('Layer 2 on the monitor (wall display): a poster strip in the footer; clicking changes the laptop\'s wallpaper', async () => {
+      const [la, lb] = await layers();
+      if (la !== 'L1' || lb !== 'L2') return { ok: false, reason: `layers ${la}/${lb}` };
+      await B.until(`document.querySelectorAll('.w-foot .wp-switch.wall .wp-thumb').length === ${lib.length}`, 5000);
+      const cur0 = await A.ev('__jhk.state.currentId.value');
+      const target = lib.find((id) => id !== cur0);
+      await B.ev(`[...document.querySelectorAll('.w-foot .wp-thumb')][${lib.indexOf(target)}].click()`);
+      const ok = await A.until(`__jhk.state.currentId.value === ${JSON.stringify(target)} && __jhk.state.loopStats.value?.fps > 0`, 8000);
+      const onB = await B.until(`document.querySelectorAll('.w-foot .wp-thumb')[${lib.indexOf(target)}]?.classList.contains('on')`, 4000);
+      await shotPng(B, 'stack-wall-switcher');
+      return ok && onB ? { detail: 'monitor tap → laptop wallpaper changed · strip highlights it' } : { ok: false, reason: JSON.stringify({ ok, onB }) };
+    });
+    await timed('a swap gets slow (over 2× the limit) → both layers stack on the wallpaper screen, video keeps playing', async () => {
+      await A.ev('__jhk.setSlowSwapMs(1)');              // every real swap is now "very slow" (the two-in-a-row rule is unit-tested)
+      const after1 = await A.ev('__jhk.state.stacked.value');
+      await swapOnce();
+      const stA = await A.until(`__jhk.state.stacked.value === true`, 3000);
+      const stB = await B.until(`__jhk.state.stacked.value === true`, 3000);
+      const [la, lb] = await layers();
+      const L1 = la === 'L1' ? A : B, L2 = la === 'L1' ? B : A;
+      const panel = await L1.ev(`(() => { const p = document.querySelector('.panel'); return { cls: p.className, op: getComputedStyle(p).opacity } })()`);
+      const playing = await L1.until(`__jhk.state.loopStats.value?.fps > 0 && !__jhk.state.loopStats.value?.paused`, 5000);
+      const banner = await L2.until(`/Both layers are on the other screen/.test(document.querySelector('.stack-banner')?.textContent || '')`, 3000);
+      await A.ev('__jhk.setSlowSwapMs(1000)');
+      await L1.until(`getComputedStyle(document.querySelector('.panel')).opacity === '1'`, 3000);
+      await sleep(300);
+      await shotPng(L1, 'stack-laptop-stacked');
+      await shotPng(L2, 'stack-wall-banner');
+      const ok = !after1 && stA && stB && /stacked/.test(panel.cls) && !/gone/.test(panel.cls) && +panel.op > 0.9 && playing && banner;
+      return ok ? { detail: `stacked on ${la === 'L1' ? 'W-A (laptop)' : 'W-B (monitor)'} · panel over the playing wallpaper · banner on the other screen` } : { ok: false, reason: JSON.stringify({ after1, stA, stB, la, lb, panel, playing, banner }) };
+    });
+    await timed('stacked: Swap only shows / hides Layer 2 over the wallpaper (no video moves, no disk read)', async () => {
+      const l0 = await layers();
+      const r0 = (await A.ev('__jhk.state.diskReads.value')) + (await B.ev('__jhk.state.diskReads.value'));
+      const L1 = l0[0] === 'L1' ? A : B;
+      await A.ev('__jhk.swap()');
+      const hidden = await L1.until(`document.querySelector('.panel').classList.contains('gone')`, 3000);
+      await B.ev('__jhk.swap()');
+      const shown = await L1.until(`!document.querySelector('.panel').classList.contains('gone')`, 3000);
+      const l1 = await layers();
+      const r1 = (await A.ev('__jhk.state.diskReads.value')) + (await B.ev('__jhk.state.diskReads.value'));
+      return hidden && shown && l0.join() === l1.join() && r1 === r0 ? { detail: `hide (from the laptop) · show (from the monitor) · layers stayed ${l1.join('/')}` } : { ok: false, reason: JSON.stringify({ hidden, shown, l0, l1, r0, r1 }) };
+    });
+    await timed('"Back to swapping" on the banner → unstacked on both screens and swaps move the video again', async () => {
+      const [la] = await layers();
+      const L2 = la === 'L1' ? B : A;
+      await L2.ev(`[...document.querySelectorAll('.stack-banner button')].find(b => /Back to swapping/.test(b.textContent)).click()`);
+      const off = await A.until(`__jhk.state.stacked.value === false`, 3000) && await B.until(`__jhk.state.stacked.value === false`, 3000);
+      const panelGone = await (la === 'L1' ? A : B).until(`document.querySelector('.panel').classList.contains('gone')`, 3000);
+      const before = await layers();
+      const done = await swapOnce();
+      const after = await layers();
+      return off && panelGone && done && before[0] !== after[0] && !(await A.ev('__jhk.state.stacked.value')) ? { detail: `${before.join('/')} → ${after.join('/')}` } : { ok: false, reason: JSON.stringify({ off, panelGone, done, before, after }) };
+    });
+    await timed('"Stack now" by hand with the wall display on top: wallpaper plays under the monitor\'s Layer 2', async () => {
+      if ((await B.ev('__jhk.state.layer.value')) !== 'L1') await swapOnce();
+      await A.ev(TAB('System'));
+      await A.until(`[...document.querySelectorAll('.harden button')].some(b => /Stack now/.test(b.textContent))`, 4000);
+      await A.ev(`[...document.querySelectorAll('.harden button')].find(b => /Stack now/.test(b.textContent)).click()`);
+      const ok = await B.until(`__jhk.state.stacked.value && !document.querySelector('.panel').classList.contains('gone') && !!document.querySelector('.panel.stacked .wall2')`, 4000);
+      const playing = await B.until(`__jhk.state.loopStats.value?.fps > 0`, 4000);
+      await B.until(`getComputedStyle(document.querySelector('.panel')).opacity === '1'`, 3000);   // the 300 ms fade-in is done
+      await sleep(300);
+      await shotPng(B, 'stack-wall-stacked');
+      await A.ev('__jhk.unstack()');
+      await B.until(`!__jhk.state.stacked.value`, 3000);
+      return ok && playing ? { detail: 'wall display drawn over the playing wallpaper on the 2560×1440 monitor' } : { ok: false, reason: JSON.stringify({ ok, playing }) };
+    });
+    await timed('thermal guard: CPU pressure "critical" pauses the wallpaper on both screens; "nominal" plays it again', async () => {
+      await A.ev(`__jhk.fakePressure('critical')`);
+      const hold = await A.until(`__jhk.state.thermalHold.value`, 3000) && await B.until(`__jhk.state.thermalHold.value`, 3000);
+      const paused = await B.until(`__jhk.state.loopStats.value?.paused === true`, 4000);
+      const badge = await B.until(`!!document.querySelector('.thermal-badge')`, 3000);
+      await A.ev(`__jhk.fakePressure('nominal')`);
+      const back = await B.until(`!__jhk.state.thermalHold.value && __jhk.state.loopStats.value?.paused === false`, 5000);
+      await A.ev(`__jhk.fakePressure(null)`);
+      return hold && paused && badge && back ? { detail: 'paused + badge while hot · playing again when cool' } : { ok: false, reason: JSON.stringify({ hold, paused, badge, back }) };
+    });
+    await timed('rotation: "Next every 5 min" moves to the next wallpaper when its time comes', async () => {
+      await A.ev('__jhk.setRotate(5)');
+      const cur0 = await A.ev('__jhk.state.currentId.value');
+      await A.ev('__jhk.rotateNow()');
+      const moved = await A.until(`__jhk.state.currentId.value !== ${JSON.stringify(cur0)}`, 6000);
+      await A.ev('__jhk.setRotate(0)');
+      return moved ? { detail: 'rotated to the next clip' } : { ok: false, reason: 'did not rotate' };
+    });
+    await timed('System tab: "Snapshot now" lists the backup; the server log opens with the startup lines', async () => {
+      await A.ev(TAB('System'));
+      await A.until(`!!document.querySelector('.harden')`, 4000);
+      await A.ev(`[...document.querySelectorAll('.harden button')].find(b => /Snapshot now/.test(b.textContent)).click()`);
+      const snap = await A.until(`/jharokha-\\d{8}-\\d{6}\\.sqlite/.test(document.querySelector('.snap-list')?.textContent || '')`, 6000);
+      await A.ev(`[...document.querySelectorAll('.harden .h-sec button')].find(b => /^Show$/.test(b.textContent.trim())).click()`);
+      const logs = await A.until(`/listening on/.test(document.querySelector('.log-view')?.textContent || '')`, 6000);
+      await A.ev(`document.querySelector('.harden').scrollIntoView()`);
+      await shotPng(A, 'week8-system');
+      return snap && logs ? { detail: 'snapshot listed · log shows "listening on"' } : { ok: false, reason: JSON.stringify({ snap, logs }) };
+    });
+    await timed('calendar: added on the laptop (Tools tab) → shown on the monitor\'s wall display', async () => {
+      if ((await B.ev('__jhk.state.layer.value')) !== 'L2') await swapOnce();
+      await A.ev(TAB('Tools'));
+      await A.until(`!!document.querySelector('.cal-add')`, 6000);
+      const set = (sel, v) => A.ev(`(() => { const i = document.querySelector(${JSON.stringify(sel)}); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(v)}); i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      const d = new Date(Date.now() + 86400e3);
+      await set('.cal-add > input', 'Physics viva');
+      await set('.cal-add input[type=date]', `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+      await set('.cal-add input[type=time]', '10:30');
+      await sleep(100);
+      await A.ev(`document.querySelector('.cal-add').requestSubmit()`);
+      const listed = await A.until(`/Physics viva/.test(document.querySelector('.cal-list')?.textContent || '') && /Tomorrow/.test(document.querySelector('.cal-list')?.textContent || '')`, 5000);
+      const wall = await B.until(`/Tomorrow 10:30/.test(document.querySelector('.w-cal')?.textContent || '') && /Physics viva/.test(document.querySelector('.w-cal')?.textContent || '')`, 5000);
+      await shotPng(A, 'week8-calendar');
+      await shotPng(B, 'week8-wall-calendar');
+      return listed && wall ? { detail: 'laptop list: Tomorrow 10:30 · wall: "Tomorrow 10:30 Physics viva"' } : { ok: false, reason: JSON.stringify({ listed, wall }) };
+    });
+    check('no uncaught page errors in either window', A.errors.length === 0 && B.errors.length === 0, 'none', [...A.errors, ...B.errors].slice(0, 3).join(' | '));
   } finally { S.proc.kill(); }
 }

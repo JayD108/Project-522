@@ -5,13 +5,16 @@
 import { LoopPlayer } from './engine/loop';
 import { epoch, onMessage, send, type Msg } from './link/channel';
 import { flushSettings, getSettings, loadSettings, startSettingsAutoFlush, updateSettings } from './store/db';
-import { RAM_BUDGET_MB, diskReadCount, importFile, listLibrary, persistStorage, readToRam, removeWallpaper, type Wallpaper } from './store/library';
+import { RAM_BUDGET_MB, diskReadCount, importFile, listLibrary, makeThumb, persistStorage, readToRam, removeWallpaper, setThumb, type Wallpaper } from './store/library';
 import {
   DEBUG, ROLE, YIELD_MS, blobMB, currentId, diskReads, lastReadMs, layer, library, loopStats, mode, monitorBack,
   arming, lastTiming, needMonitorTap, overlayOpen, peer, screensInfo, swapFails, swapping, swaps, toast,
   activeScene, autoScenes, cinema, nextChange, nightWatch, showcase, place, scenes, theme, weather, weatherError, yielded,
+  SLOW_SWAP_MS, autoStack, rotateMin, stackInfo, stackOverlay, stacked, thermalGuard, thermalHold,
 } from './state';
+import { vitals } from './ui/vitals';
 import { nextScene, sceneAt, type Scene } from './scenes';
+import { slowVerdict } from './stacking';
 import { fetchWeather, geocode, type Place } from './weather';
 import { onServerMessage, setRole, wsSend } from './serverLink';
 import { fun } from './room/roomClient';
@@ -36,6 +39,10 @@ let peerYielded = false;                // A: B has dropped its clip
 let nextClip: { blob: Blob; wp: Wallpaper } | null = null;  // A: prefetched clip for the next scene
 let clipLoading: Promise<boolean> | null = null;
 let lastScene: string | null = null;
+let lastWpChange = Date.now();
+let selectSeq = 0;                      // newest wallpaper pick (older reads that finish late are dropped)          // wallpaper rotation clock
+let fakePressure: string | null = null; // debug/test stand-in for Compute Pressure
+let hotSince = 0, coolSince = 0;
 
 const FADE_MS = 600;
 
@@ -88,11 +95,36 @@ function recordSwap(ms: number, id: string) {
   swaps.value = [...swaps.value, ms];
   if (player && ms > 500 && DEBUG) console.warn(`slow swap ${ms} ms`, player.timing);
   swapWaiter?.(ms);
+  checkSlowSwaps();
 }
+
+// ------------------------------------------------------------------------- stacked layers (swaps got slow)
+// Moving the video between screens costs a decoder start on the other screen. When that gets slow (a busy laptop,
+// thermal throttling, a big clip), stop moving it: the screen that has the wallpaper also draws Layer 2 over it,
+// and Swap just shows / hides that panel. The other screen stays the dashboard. "Back to swapping" undoes it.
+function checkSlowSwaps() {
+  if (ROLE !== 'A' || stacked.value || !autoStack.value || mode.value !== 'dual') return;
+  const why = slowVerdict(swaps.value, SLOW_SWAP_MS.v);
+  if (why) setStacked(true, why, swaps.value[swaps.value.length - 1]);
+}
+
+export function setStacked(on: boolean, reason = '', ms: number | null = null, overlay = true, fromPeer = false) {
+  const was = stacked.value;
+  stacked.value = on;
+  stackOverlay.value = on ? overlay : true;
+  if (on && !was) stackInfo.value = { reason, ms, at: Date.now() };
+  if (!on) stackInfo.value = null;
+  if (layer.value === 'L1') overlayOpen.value = on && overlay;
+  if (!fromPeer) send({ t: 'stack', on, overlay, reason, ms });
+  if (on && !was && !fromPeer) toast(`Swaps got slow (${reason}): both layers are now on one screen`, 7000);
+}
+export const unstack = () => setStacked(false);
+
 
 export function requestSwap() {
   if (layer.value === 'start' || cinema.value || nightWatch.value) return;
   if (mode.value === 'single') { overlayOpen.value = !overlayOpen.value; return; }
+  if (stacked.value) { setStacked(true, '', null, !stackOverlay.value); return; }   // stacked: show / hide Layer 2 over the wallpaper
   if (!peer.value.alive) { toast('Other screen is not responding'); return; }
   const t0 = epoch();
   if (layer.value === 'L1') handOver(t0, rid());
@@ -108,11 +140,17 @@ function handOver(t0: number, id: string) {
   send({ t: 'become-l1', blob: clip.blob, wp: clip.wp, at: player.currentTime(), swapId: id, t0 });
   setTimeout(() => {
     // Slow, not necessarily failed: a late l1-ready still completes this handover (see onMsg).
-    if (pending?.id === id) { pending = null; swapping.value = false; swapFails.value++; toast('Swap is slow…'); }
+    if (pending?.id === id) {
+      pending = null; swapping.value = false; swapFails.value++; toast('Swap is slow…');
+      if (ROLE === 'A') onSwapTimeout(); else send({ t: 'swap-timeout' });
+    }
   }, 3000);
 }
 
 const rid = () => Math.random().toString(36).slice(2, 8);
+function onSwapTimeout() {
+  if (autoStack.value && mode.value === 'dual' && !stacked.value) setStacked(true, 'a swap took over 3 s', 3000);
+}
 
 // ------------------------------------------------------------------------- messages
 function onMsg(m: Msg) {
@@ -120,7 +158,12 @@ function onMsg(m: Msg) {
     case 'hello':
       markAlive();
       send({ t: 'hello-ack' });
-      if (ROLE === 'A') { send({ t: 'fx', cinema: cinema.value, night: nightWatch.value, showcase: showcase.value }); send({ t: 'weather', w: weather.value }); send({ t: 'theme', theme: theme.value }); peerYielded = false; }
+      if (ROLE === 'A') {
+        send({ t: 'fx', cinema: cinema.value, night: nightWatch.value, showcase: showcase.value }); send({ t: 'weather', w: weather.value }); send({ t: 'theme', theme: theme.value }); peerYielded = false;
+        if (stacked.value) send({ t: 'stack', on: true, overlay: stackOverlay.value, reason: stackInfo.value?.reason || '', ms: stackInfo.value?.ms ?? null });
+        if (thermalHold.value) send({ t: 'thermal', hold: true });
+        send({ t: 'current', id: currentId.value });
+      }
       if (ROLE === 'A' && startOnHello) { startOnHello = false; sendLayer1ToB(); }
       break;
     case 'hello-ack': markAlive(); break;
@@ -139,7 +182,7 @@ function onMsg(m: Msg) {
         if (player) lastTiming.value = { ...player.timing, totalMs: ms };
         layer.value = 'L1';
         arming.value = false;
-        overlayOpen.value = false;
+        overlayOpen.value = stacked.value && stackOverlay.value;
         recordSwap(ms, swapId);
         send({ t: 'l1-ready', swapId, ms });
       }).catch((e) => { arming.value = false; send({ t: 'l1-failed', swapId, error: String(e?.message || e) }); });
@@ -168,6 +211,9 @@ function onMsg(m: Msg) {
     case 'fx': setFx({ cinema: m.cinema, night: m.night, showcase: !!m.showcase }, true); break;
     case 'weather': weather.value = m.w; break;
     case 'theme': applyTheme(m.theme); break;
+    case 'stack': setStacked(m.on, m.reason, m.ms, m.overlay, true); break;
+    case 'swap-timeout': if (ROLE === 'A') onSwapTimeout(); break;
+    case 'thermal': if (thermalHold.value !== m.hold) { thermalHold.value = m.hold; updateDormancy(); } break;
     case 'released':
       if (ROLE === 'A') {
         peerYielded = true;
@@ -184,6 +230,7 @@ function onMsg(m: Msg) {
       }
       break;
     case 'select': if (ROLE === 'A') selectWallpaper(m.id); break;
+    case 'current': if (ROLE === 'B') currentId.value = m.id; break;
     case 'library-changed': refreshLibrary(); break;
     case 'stats': loopStats.value = m.stats; break;
     case 'close':
@@ -259,8 +306,14 @@ export async function selectWallpaper(id: string) {
   if (ROLE === 'B') { send({ t: 'select', id }); return; }
   const wp = library.value.find((w) => w.id === id);
   if (!wp) return;
-  if (clip?.wp.id === id) return;
+  if (clip?.wp.id === id) {
+    // Already in RAM. If a newer pick is still being read, cancel it: going back to what's playing must win.
+    if (currentId.value !== id) { selectSeq++; currentId.value = id; lastWpChange = Date.now(); updateSettings({ currentId: id }); }
+    return;
+  }
+  const seq = ++selectSeq;
   currentId.value = id;
+  lastWpChange = Date.now();
   updateSettings({ currentId: id });
   if (started && isDormant() && (yielded.value || peerYielded)) {
     // Released for Netflix: don't touch the disk now; wake() reads the new choice when we're back.
@@ -274,11 +327,45 @@ export async function selectWallpaper(id: string) {
     diskReads.value = diskReadCount(); lastReadMs.value = r.ms;
     blob = r.blob;
   }
+  if (seq !== selectSeq) return;            // a newer pick arrived while this one was reading: drop it
   setClip({ blob, wp });
+  if (!wp.thumb) backfillThumb(wp, blob);
   if (nextClip && nextClip.wp.id !== id) nextClip = null;
   if (!started) return;
   if (layer.value === 'L1') await playLocal(blob, wp);
   else if (mode.value === 'dual') send({ t: 'play', blob, wp });
+}
+
+/** Older clips have no poster: make one from the copy already in RAM (no disk read). */
+function backfillThumb(wp: Wallpaper, blob: Blob) {
+  makeThumb(blob).then(async (t) => {
+    if (t && (await setThumb(wp.id, t))) { await refreshLibrary(); send({ t: 'library-changed' }); }
+  }).catch(() => {});
+}
+
+/** Layer 2 switcher, keys [ and ], phones: the previous / next wallpaper in the library. */
+export function stepWallpaper(dir: 1 | -1) {
+  const list = library.value;
+  if (!list.length) return;
+  const i = list.findIndex((w) => w.id === currentId.value);
+  const next = list[(i + dir + list.length) % list.length];
+  if (next && next.id !== currentId.value) selectWallpaper(next.id).catch((e) => toast(String(e.message)));
+}
+
+export function setRotate(min: number) {
+  if (ROLE === 'B') return;
+  rotateMin.value = [0, 5, 15, 30, 60, 120].includes(min) ? min : 0;
+  updateSettings({ rotateMin: rotateMin.value });
+  lastWpChange = Date.now();
+}
+export function setAutoStack(on: boolean) {
+  autoStack.value = on;
+  if (ROLE === 'A') updateSettings({ autoStack: on });
+}
+export function setThermalGuard(on: boolean) {
+  thermalGuard.value = on;
+  if (ROLE === 'A') updateSettings({ thermalGuard: on });
+  if (!on && thermalHold.value) setThermalHold(false);
 }
 
 // ------------------------------------------------------------------------- screens / start
@@ -374,6 +461,7 @@ function onScreensChange() {
 function fallBackToSingle(why: string) {
   send({ t: 'close' });
   mode.value = 'single';
+  if (stacked.value) { stacked.value = false; stackInfo.value = null; stackOverlay.value = true; }
   pending = null; swapping.value = false;
   peer.value = { alive: false, rtt: null };
   toast(why, 6000);
@@ -420,7 +508,7 @@ export async function init(stageEl: HTMLElement) {
   stage = stageEl;
   onMessage(onMsg);
   setRole(ROLE);
-  if (ROLE === 'A') startRemote();
+  if (ROLE === 'A') { startRemote(); currentId.subscribe((id) => send({ t: 'current', id })); }   // the monitor's switcher shows what's playing
   let lastCast: string | null = null;
   fun.subscribe((f) => { const k = f?.casting?.url ?? null; if (k !== lastCast) { lastCast = k; updateDormancy(); } });
   window.addEventListener('pagehide', () => send({ t: 'bye' }));
@@ -437,13 +525,17 @@ export async function init(stageEl: HTMLElement) {
   document.addEventListener('keydown', (e) => {
     // Night Watch: any key wakes (except bare modifiers), and does nothing else.
     if (nightWatch.value && !['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) { e.preventDefault(); setFx({ night: false }); return; }
-    if (e.target instanceof HTMLInputElement) return;
+    const tg = e.target as HTMLElement | null;
+    if (tg && (tg instanceof HTMLInputElement || tg instanceof HTMLTextAreaElement || tg instanceof HTMLSelectElement || tg.isContentEditable)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;     // Ctrl+S, Alt+N… belong to Chrome
     const k = e.key.toLowerCase();
     if (k === 's') requestSwap();
     else if (k === 'f') toggleFullscreen();
     else if (k === 'c') toggleCinema();
     else if (k === 'n') toggleNightWatch();
     else if (k === 'v') toggleShowcase();
+    else if (k === '[') stepWallpaper(-1);
+    else if (k === ']') stepWallpaper(1);
     else if (k === 'escape') { overlayOpen.value = false; if (cinema.value || nightWatch.value || showcase.value) setFx({ cinema: false, night: false, showcase: false }); }
   });
 
@@ -454,6 +546,7 @@ export async function init(stageEl: HTMLElement) {
     await refreshLibrary();
     scenes.value = s.scenes; autoScenes.value = s.autoScenes; place.value = s.place; weather.value = s.lastWeather;
     applyTheme(s.theme);
+    autoStack.value = s.autoStack; thermalGuard.value = s.thermalGuard; rotateMin.value = s.rotateMin || 0;
     const has = (id: string | null | undefined): id is string => !!id && library.value.some((w) => w.id === id);
     const sc = sceneAt(new Date(), s.scenes);
     activeScene.value = sc?.key ?? null;
@@ -465,6 +558,7 @@ export async function init(stageEl: HTMLElement) {
     setInterval(schedulerTick, 15000);
     schedulerTick();
     startWeather();
+    setInterval(thermalTick, 5000);
   } else {
     await refreshLibrary();
     send({ t: 'hello' });
@@ -477,9 +571,11 @@ export async function init(stageEl: HTMLElement) {
       LoopPlayer, select: selectWallpaper, setFx, setTheme, toggleCinema, toggleNightWatch, setScene, setAutoScenes, schedulerTick,
       fakeHidden: (h: boolean) => { fakeHidden = h; updateDormancy(); },
       hasPrefetch: () => nextClip?.wp.id ?? null,
+      setSlowSwapMs: (ms: number) => { SLOW_SWAP_MS.v = ms; }, setStacked, unstack, stepWallpaper, setRotate, setAutoStack, setThermalGuard,
+      fakePressure: (p: string | null) => { fakePressure = p; thermalTick(); }, rotateNow: () => { lastWpChange = 0; schedulerTick(); },
       playerCount: () => document.querySelectorAll('.jhk-player').length, loadSamples, deleteWallpaper, swap: requestSwap, autoSwap, start, openMonitorWindow, flushSettings,
       state: { layer, mode, peer, swaps, loopStats, diskReads, blobMB, library, needMonitorTap, lastTiming, overlayOpen, currentId, screensInfo,
-        cinema, nightWatch, showcase, yielded, scenes, autoScenes, activeScene, nextChange, weather },
+        cinema, nightWatch, showcase, yielded, scenes, autoScenes, activeScene, nextChange, weather, stacked, stackOverlay, stackInfo, thermalHold, rotateMin },
     };
   }
 }
@@ -487,7 +583,7 @@ export async function init(stageEl: HTMLElement) {
 // ========================================================================= Week 2 · coexist
 // A window is "dormant" when it's covered (hidden), or in 🎬 Cinema / 🌙 Night Watch.
 // Dormant → pause at once; still dormant after YIELD_MS (2 min) → drop the player AND the Blob ref (v2 §1.3).
-function isDormant() { return document.hidden || fakeHidden || cinema.value || nightWatch.value || showcase.value || castHere(); }
+function isDormant() { return document.hidden || fakeHidden || cinema.value || nightWatch.value || showcase.value || thermalHold.value || castHere(); }
 /** This window is the one on the wall (monitor): W-B in dual mode, the only window in single mode. */
 export const isWallWindow = () => ROLE === 'B' || mode.value === 'single';
 /** A cast is showing in this window → the wallpaper pauses (and frees the decoder after the yield delay). */
@@ -511,7 +607,7 @@ function releaseMedia() {
   const had = !!player || !!clip || !!nextClip;
   if (player) { resumeAt = player.currentTime(); resumeId = clip?.wp.id ?? null; dropPlayer(0); }
   // Dual + Layer 2 on A with B still playing: B shares the same Blob, so keep the ref (dropping it frees nothing).
-  if (ROLE === 'B' || layer.value === 'L1' || mode.value === 'single' || peerYielded || cinema.value || nightWatch.value || showcase.value) setClip(null);
+  if (ROLE === 'B' || layer.value === 'L1' || mode.value === 'single' || peerYielded || cinema.value || nightWatch.value || showcase.value || thermalHold.value) setClip(null);
   nextClip = null;
   yielded.value = true;
   if (had) send({ t: 'released' });
@@ -567,6 +663,7 @@ export function schedulerTick() {
   activeScene.value = cur?.key ?? null;
   const nx = nextScene(now, list);
   nextChange.value = nx ? { label: nx.scene.label, inMs: nx.inMs, prefetched: !!nextClip && nextClip.wp.id === nx.scene.wallpaperId } : null;
+  rotationTick();
   if (!autoScenes.value || !cur) return;
   if (cur.key !== lastScene) {
     lastScene = cur.key;
@@ -578,8 +675,22 @@ export function schedulerTick() {
   if (nx && nx.inMs <= PREFETCH_MS) prefetch(nx.scene);
 }
 
-async function prefetch(s: Scene) {
-  const id = s.wallpaperId;
+/** Wallpaper rotation: the next clip every N minutes (read into RAM 3 min early, like a scene change). */
+function rotationTick() {
+  const n = rotateMin.value;
+  if (!n || !started || library.value.length < 2) return;
+  const list = library.value;
+  const i = list.findIndex((w) => w.id === currentId.value);
+  const next = list[(i + 1) % list.length];
+  const left = lastWpChange + n * 60000 - Date.now();
+  if (left <= 0) {
+    if (isDormant()) return;                       // covered by Netflix etc.: don't spend a disk read now
+    selectWallpaper(next.id).catch((e) => toast(String(e.message)));
+  } else if (left <= PREFETCH_MS) prefetchId(next.id);
+}
+
+async function prefetch(s: Scene) { return prefetchId(s.wallpaperId); }
+async function prefetchId(id: string | null) {
   if (!id || id === currentId.value || nextClip?.wp.id === id || isDormant()) return;
   const wp = library.value.find((w) => w.id === id);
   if (!wp) return;
@@ -651,6 +762,28 @@ export async function setPlace(name: string) {
   }
 }
 
+// ========================================================================= Week 8 · thermal guard
+// Compute Pressure "serious"/"critical" for 20 s → pause the wallpaper on both screens (a paused <video> decodes
+// nothing); back to "nominal"/"fair" for 60 s → play again. ChromeOS hides temperatures, so CPU pressure is the signal.
+const HOT_MS = 20_000, COOL_MS = 60_000;
+export function currentPressure() { return fakePressure ?? vitals.value.pressure; }
+function thermalTick() {
+  const p = currentPressure();
+  const hot = p === 'serious' || p === 'critical';
+  const now = Date.now();
+  if (hot) { coolSince = 0; hotSince ||= now; } else { hotSince = 0; coolSince ||= now; }
+  const fake = fakePressure !== null;                // tests: act at once instead of waiting 20 s / 60 s
+  if (!thermalHold.value && hot && thermalGuard.value && started && (fake || now - hotSince >= HOT_MS)) setThermalHold(true);
+  else if (thermalHold.value && !hot && (fake || p === 'n/a' || now - coolSince >= COOL_MS)) setThermalHold(false);
+}
+function setThermalHold(on: boolean) {
+  thermalHold.value = on;
+  send({ t: 'thermal', hold: on });
+  toast(on ? 'The laptop is working hard: wallpaper paused to keep it cool' : 'Cooled down: wallpaper playing again', 6000);
+  updateDormancy();
+  reportScreen(true);
+}
+
 // ========================================================================= Week 5 · owner remote
 // The server relays an owner's phone buttons to this window (W-A); we report back what the screens are doing.
 function screenState() {
@@ -658,6 +791,8 @@ function screenState() {
   return {
     mode: mode.value, layer: layer.value, cinema: cinema.value, night: nightWatch.value, showcase: showcase.value, currentId: currentId.value,
     wallpapers: library.value.map((w) => ({ id: w.id, name: w.name })), scene: sc?.label ?? null, autoScenes: autoScenes.value,
+    stacked: stacked.value, rotateMin: rotateMin.value,
+    tz: -new Date().getTimezoneOffset(), thermal: { state: currentPressure(), guard: thermalHold.value },
   };
 }
 let lastSent = '';
@@ -675,7 +810,11 @@ function startRemote() {
       case 'cinema': toggleCinema(); break;
       case 'night': toggleNightWatch(); break;
       case 'showcase': toggleShowcase(); break;
-      case 'wallpaper': if (typeof m.arg === 'string') selectWallpaper(m.arg).catch((e) => toast(String(e.message))); break;
+      case 'wallpaper':
+        if (m.arg === 'next' || m.arg === 'prev') stepWallpaper(m.arg === 'next' ? 1 : -1);
+        else if (typeof m.arg === 'string') selectWallpaper(m.arg).catch((e) => toast(String(e.message)));
+        break;
+      case 'stack': setStacked(!stacked.value, 'switched on from a phone'); break;
       case 'scene': {
         const sc = scenes.value.find((x) => x.key === m.arg);
         if (sc?.wallpaperId) selectWallpaper(sc.wallpaperId).catch((e) => toast(String(e.message)));

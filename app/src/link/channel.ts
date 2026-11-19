@@ -25,9 +25,17 @@ export type Msg =
   | { t: 'weather'; w: Weather | null }
   | { t: 'theme'; theme: 'night' | 'ink' }
   | { t: 'select'; id: string }
+  /** A → B: the wallpaper that is current now (B's switcher highlights it). */
+  | { t: 'current'; id: string | null }
   | { t: 'library-changed' }
   | { t: 'stats'; stats: LoopStats }
   | { t: 'swap-done'; ms: number }
+  /** Stacked layers on/off (+ is Layer 2 shown over the wallpaper right now), mirrored on both windows. */
+  | { t: 'stack'; on: boolean; overlay: boolean; reason: string; ms: number | null }
+  /** The Layer-1 window's handover timed out (slow swap): the brain decides about stacking. */
+  | { t: 'swap-timeout' }
+  /** Thermal guard: wallpaper paused on both screens until the laptop cools down. */
+  | { t: 'thermal'; hold: boolean }
   /** Monitor gone: B hands Layer 1 back (if it has it) and closes. */
   | { t: 'close' };
 

@@ -28,6 +28,7 @@ import { createTunnel } from './tunnel.mjs';
 import { createFun, expandLink, youtubeTitle } from './fun.mjs';
 import { createNetGuard } from './netguard.mjs';
 import { createTools } from './tools.mjs';
+import { createLogRing, createSnapshots } from './harden.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -46,6 +47,9 @@ const CROSTINI_NET = /^100\.115\.92\./;          // ChromeOS ↔ Linux container
 
 // ------------------------------------------------------------------ SQLite (WAL, checkpoint every 5 min)
 fs.mkdirSync(DATA_DIR, { recursive: true });
+// Week 8: every console line also goes to a RAM ring (System tab) + a rotating file (≤ 4 MB on disk).
+const logs = createLogRing({ dir: path.join(DATA_DIR, 'logs'), max: Number(process.env.JHK_LOG_RING || 1000), fileMax: Number(process.env.JHK_LOG_FILE_MAX || 1 << 20) });
+logs.capture();
 const DB_FILE = path.join(DATA_DIR, 'jharokha.sqlite');
 let db = null;
 let sqliteInfo = { ok: false, reason: 'not initialised' };
@@ -68,6 +72,12 @@ function checkpoint() {
   try { db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); lastCheckpoint = Date.now(); } catch { /* busy: next time */ }
 }
 setInterval(checkpoint, CHECKPOINT_MS).unref();
+// Week 8: nightly snapshot (VACUUM INTO) at 03:30 laptop time, newest 7 kept. Crostini runs UTC, so W-A reports its offset.
+let tzOffsetMin = 0;
+const snapshots = createSnapshots({ db, dir: path.join(DATA_DIR, 'backups'), keep: Number(process.env.JHK_SNAP_KEEP || 7), at: process.env.JHK_SNAP_AT || '03:30', log: (m) => console.log(m), tzOffset: () => tzOffsetMin });
+snapshots.schedule();
+// Week 8: thermal guard. The laptop's Chrome reports Compute Pressure; the server keeps the last report for every screen.
+let thermal = { state: 'n/a', at: 0, since: 0, guard: false };
 
 const kvGet = (k) => { try { const r = db?.prepare('SELECT v FROM kv WHERE k = ?').get(k); return r ? JSON.parse(r.v) : null; } catch { return null; } };
 const kvSet = (k, v) => { try { db?.prepare('INSERT INTO kv (k, v, at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, at = excluded.at').run(k, JSON.stringify(v), Date.now()); } catch { /* read-only disk etc. */ } };
@@ -156,6 +166,9 @@ function vitals() {
     mem: readProcMem(), rssMB: Math.round(process.memoryUsage().rss / 2 ** 20),
     node: process.version,
     sqlite: sqliteInfo,
+    thermal: thermal.state, thermalGuard: thermal.guard,
+    lastSnapshot: snapshots.status().list[0] ?? null,
+    logLines: logs.size(),
   };
 }
 
@@ -291,6 +304,19 @@ app.get('/clips', async () => listVideos(CLIPS, '/clips'));
 app.get('/api/samples', async () => listVideos(SAMPLES, '/samples'));
 app.get('/api/vitals', { preHandler: needMember }, async () => vitals());
 app.get('/api/join', async () => joinInfo());
+// Week 8 · System: logs (RAM ring + rotating file), snapshots, thermal. Owners only.
+app.get('/api/system/logs', { preHandler: needOwner }, async (req) => ({
+  lines: logs.tail({ n: Number(req.query?.n) || 200, level: ['info', 'warn', 'error'].includes(req.query?.level) ? req.query.level : null, after: Number(req.query?.after) || 0 }),
+  files: logs.files(), ring: logs.size(),
+}));
+app.get('/api/system/backups', { preHandler: needOwner }, async () => snapshots.status());
+app.post('/api/system/backups', { preHandler: needOwner }, async (req, reply) => {
+  checkpoint();
+  const r = snapshots.take('owner');
+  access?.log(access.actorName(req.who), 'snapshot', r.name, r.ok ? `${Math.round(r.bytes / 1024)} KB` : r.error);
+  return r.ok ? { ok: true, snapshot: r, status: snapshots.status() } : reply.code(500).send({ error: r.error });
+});
+app.get('/api/system/thermal', { preHandler: needMember }, async () => thermal);
 app.get('/api/qr.svg', async (req, reply) => {
   const svg = await QRCode.toString(joinInfo().url, { type: 'svg', margin: 4, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } });
   reply.type('image/svg+xml').header('cache-control', 'no-store');
@@ -523,6 +549,12 @@ app.get('/ws', { websocket: true }, (socket, req) => {
     // W-A reports what the screens are doing, for the owner remote.
     if (m.t === 'screen-state' && socket.jhkOwner && socket.jhkRole === 'A' && m.s && typeof m.s === 'object') {
       lastScreen = { ...m.s, at: Date.now() };
+      if (Number.isFinite(m.s.tz) && Math.abs(m.s.tz) <= 14 * 60 && m.s.tz !== tzOffsetMin) { tzOffsetMin = m.s.tz; snapshots.schedule(); }
+      if (m.s.thermal && typeof m.s.thermal.state === 'string') {
+        const st = String(m.s.thermal.state).slice(0, 12);
+        if (st !== thermal.state) { thermal = { state: st, at: Date.now(), since: Date.now(), guard: !!m.s.thermal.guard }; console.log(`thermal: ${st}${thermal.guard ? ' (guard on: wallpaper paused)' : ''}`); }
+        else thermal = { ...thermal, at: Date.now(), guard: !!m.s.thermal.guard };
+      }
       const msg = JSON.stringify({ t: 'screen', s: lastScreen });
       for (const c of app.websocketServer.clients) if (c.jhkOwner && c !== socket && c.readyState === 1) c.send(msg);
     }
@@ -584,7 +616,7 @@ function openOnLaptop(url) {
 }
 
 // ------------------------------------------------------------------ Week 5 · room: board, door sign, drops, remote
-const REMOTE_CMDS = ['swap', 'cinema', 'night', 'showcase', 'scene', 'wallpaper', 'ping'];
+const REMOTE_CMDS = ['swap', 'cinema', 'night', 'showcase', 'scene', 'wallpaper', 'stack', 'ping'];
 const MEDIA_CMDS = ['toggle', 'play', 'pause', 'seek', 'seekTo', 'volume', 'mute', 'unmute', 'stop'];
 let lastScreen = null;
 function canWrite(who) {
@@ -634,6 +666,8 @@ app.delete('/api/tools/expense/:id', { preHandler: needWriter }, async (req, rep
 app.post('/api/tools/settle', { preHandler: needWriter }, async (req, reply) => funReply(reply, tools.settle(req.body || {}, funWho(req), isOwn(req))));
 app.post('/api/tools/clear', { preHandler: needOwner }, async (req, reply) => { const r = tools.clearSettled(true); if (!r.error) audit(req, 'split: cleared'); return funReply(reply, r); });
 app.post('/api/tools/upi', { preHandler: needWriter }, async (req, reply) => funReply(reply, tools.setUpi(req.body || {}, funWho(req))));
+app.post('/api/tools/event', { preHandler: needWriter }, async (req, reply) => funReply(reply, tools.addEvent(req.body || {}, funWho(req))));
+app.delete('/api/tools/event/:id', { preHandler: needWriter }, async (req, reply) => funReply(reply, tools.deleteEvent(req.params.id, funWho(req), isOwn(req))));
 app.post('/api/tools/alarm', { preHandler: needOwner }, async (req, reply) => { const r = tools.setAlarm(req.body || {}, funWho(req)); if (!r.error) audit(req, 'alarm', `${r.alarm.on ? 'on' : 'off'} ${r.alarm.time}`); return funReply(reply, r); });
 app.post('/api/tools/alarm/:action', { preHandler: needMember }, async (req, reply) => funReply(reply, tools.alarmAction(req.params.action)));
 const expanded = async (b) => ({ ...(b || {}), url: process.env.JHK_OFFLINE ? b?.url : await expandLink(b?.url) });
@@ -744,6 +778,7 @@ setInterval(() => { const q = access?.settings().quiet; const nowQ = access ? ac
 
 app.setErrorHandler((err, req, reply) => { reply.code(err.statusCode || 500).send({ error: err.message }); });
 process.on('uncaughtException', (e) => { errors++; console.error('uncaught', e); });
+process.on('unhandledRejection', (e) => { errors++; console.error('unhandled rejection', e); });
 
 // ------------------------------------------------------------------ start / stop
 try {
@@ -765,6 +800,7 @@ async function stop() {
   try { fun.save(); } catch { /* best effort */ }
   try { tools.save(); } catch { /* best effort */ }
   tunnel.stop();
+  snapshots.stop();
   try { room?.save(); } catch { /* best effort */ }
   checkpoint();
   try { await app.close(); } catch { /* already closing */ }

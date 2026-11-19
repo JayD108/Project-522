@@ -97,12 +97,23 @@
 - [x] Showcase: audio-reactive canvas from the laptop mic (`ui/Showcase.tsx`, key V)
 - [x] Phone remote for Netflix / YouTube tabs: "Jharokha Remote" Chrome extension (`extension/`), D-pad, touchpad, typing, player
 - [x] Layer 1 Swap button
-- [ ] Calendar (optional, not started)
+- [x] Calendar: room events with a date / time, reminder chime on every screen and phone (`addEvent` in tools.mjs, `CalendarCard`), the next 3 on the wall
 - [ ] **On the device:** load the extension once (chrome://extensions → Load unpacked → Linux files/jharokha/extension); try Netflix from the phone; a real UPI payment link on Android + iPhone
 
-### Week 8 · Harden
-- [ ] Nightly SQLite snapshot, thermal guard (Compute Pressure), 72 h soak (< 50 MB growth), ring-buffer logs
+### Week 8 · Harden ← built (19 Nov), the 72 h soak itself runs on the laptop
+- [x] Nightly SQLite snapshot: `VACUUM INTO data/backups/` at 03:30 laptop time (W-A reports its time zone; Crostini runs UTC), newest 7 kept, files 0600, "Snapshot now" for owners (`server/harden.mjs`)
+- [x] Ring-buffer logs: every console line → RAM ring (last 1000, System tab, filter warnings) + `data/logs/jharokha.log` rotating at 1 MB × 3 old files
+- [x] Thermal guard: Compute Pressure serious/critical for 20 s → the wallpaper pauses on both screens (and frees its RAM after the usual 2 min); nominal/fair for 60 s → plays again. Reported to the server and the phone remote
+- [x] `npm run soak` (`scripts/soak.mjs`): own server + headless dual-screen Chrome, swaps + room traffic, samples RSS / heap / videos every minute → CSV + JSON verdict (< 50 MB growth). A 12-minute run passed on the laptop (see DEVLOG)
+- [x] Server no longer exits on an unhandled promise rejection (counted as an error + logged)
+- [ ] **On the device:** the full 72 h soak; real CPU pressure triggers the guard (DEVICE-CHECKS · Week 8)
 - [ ] HTTPS via a domain + DNS-01 **only if you approve the purchase**
+
+### Extras (19 Nov): asked for directly
+- [x] **Change the wallpaper from Layer 2**: poster strip (thumbnails made from RAM at import; old clips get one the next time they play) with ◀ ▶ on the laptop Home tab and the wall display footer; works from either screen; keys [ / ]; rotation (next every 5 / 15 / 30 / 60 / 120 min, prefetched 3 min early); phone remote ◀ ▶
+- [x] **Stacked layers when swaps slow down**: one swap ≥ 2 s, two in a row ≥ 1 s, or a 3 s timeout → the wallpaper stays on its screen, Layer 2 is drawn over it (see-through cards, no blur), Swap shows / hides it, a banner on the other screen explains it with "Back to swapping". Auto on by default; "Stack now" by hand; phones can toggle it
+- [x] Bug fixes: shortcuts no longer fire while typing in a select / textarea or with Ctrl/Alt (Ctrl+S swapped screens); quick wallpaper picks no longer get lost or overwritten by a slower earlier read; the monitor window now knows which wallpaper is playing
+- Planned next (not built): restore a snapshot from the System tab (now a documented 1-line command in SETUP §6); per-scene rotation lists; a stable phone address for the Android app (ANDROID.md)
 
 ## Every week, when it's done
 - Update `probe/updates.html` (newest week on top), then `npm run show`: it restarts the server and opens What's new + the app in ChromeOS Chrome on the laptop.

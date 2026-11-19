@@ -50,6 +50,18 @@ export const weather = signal<Weather | null>(null);
 export const weatherError = signal('');
 export const theme = signal<'night' | 'ink'>('night');
 
+// ---- Stacked layers: swaps got slow → Layer 2 is drawn over the wallpaper on the screen that has it; Swap only shows/hides it
+export const stacked = signal(false);
+export const stackOverlay = signal(true);            // stacked: Layer 2 currently shown over the wallpaper
+export const stackInfo = signal<{ reason: string; ms: number | null; at: number } | null>(null);
+export const autoStack = signal(true);
+/** A swap slower than this counts as slow (two in a row, or one over 2×, or a timeout → stacked). `?slowswap=ms` in debug. */
+export const SLOW_SWAP_MS = { v: (DEBUG && Number(params.get('slowswap'))) || 1000 };
+// ---- Week 8: thermal guard + wallpaper rotation
+export const thermalGuard = signal(true);
+export const thermalHold = signal(false);            // wallpaper paused because the laptop is under heavy CPU pressure
+export const rotateMin = signal(0);
+
 let noticeTimer = 0;
 export function toast(msg: string, ms = 4000) {
   if (cinema.value) return;                          // Cinema = notifications off

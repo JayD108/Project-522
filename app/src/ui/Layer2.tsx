@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import {
   DEBUG, ROLE, theme, activeScene, blobMB, currentId, diskReads, lastReadMs, library, loopStats, mode, nextChange, overlayOpen, scenes,
-  swapFails, swapSummary, swapping, swaps, yielded,
+  swapFails, swapSummary, swapping, swaps, yielded, stacked, stackOverlay, thermalHold,
 } from '../state';
 import { autoSwap, launchAppWithTap, requestSwap, setTheme, toggleCinema, toggleFullscreen, toggleNightWatch, toggleShowcase } from '../host';
 import { WallTools } from './Tools';
@@ -22,6 +22,7 @@ import { ScenesCard, WeatherCard, WeatherLine } from './Week2';
 import { ServerPanel, VitalsRing } from './Week3';
 import { AccessCard, PairCard } from './Week4';
 import { vitals } from './vitals';
+import { RotateSelect, WallpaperSwitcher } from './Week8';
 
 type Tab = 'home' | 'wallpapers' | 'room' | 'fun' | 'tools' | 'system';
 
@@ -43,10 +44,11 @@ export function Layer2() {
 // ============================================================================ shared bits
 function ScreenActions({ labels = true }: { labels?: boolean }) {
   const single = mode.value === 'single';
+  const st = !single && stacked.value;
   return (
     <div class="actions">
-      <button class="primary" onClick={requestSwap} disabled={swapping.value} title={single ? 'Show the wallpaper (S)' : 'Swap screens (S)'}>
-        <Icon name={single ? 'image' : 'swap'} />{labels && (single ? (overlayOpen.value ? 'Wallpaper' : 'Dashboard') : 'Swap')}
+      <button class="primary" onClick={requestSwap} disabled={swapping.value} title={single ? 'Show the wallpaper (S)' : st ? 'Stacked: show / hide the dashboard over the wallpaper (S)' : 'Swap screens (S)'}>
+        <Icon name={single ? 'image' : st ? 'layers' : 'swap'} />{labels && (single ? (overlayOpen.value ? 'Wallpaper' : 'Dashboard') : st ? (stackOverlay.value ? 'Hide panel' : 'Show panel') : 'Swap')}
       </button>
       <button onClick={toggleCinema} title="Cinema (C): pause the wallpaper, dim this screen"><Icon name="cinema" />{labels && 'Cinema'}</button>
       <button onClick={toggleNightWatch} title="Night Watch (N): both screens near-black"><Icon name="night" />{labels && 'Night'}</button>
@@ -73,9 +75,9 @@ function NowPlaying() {
   const fmtIn = (ms: number) => { const m = Math.round(ms / 60000); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`; };
   return (
     <div class="now">
-      <div class="now-name">{ROLE === 'A' ? (wp?.name ?? 'No wallpaper') : 'Wallpaper on the other screen'}</div>
+      <div class="now-name">{wp?.name ?? (ROLE === 'A' ? 'No wallpaper' : 'Wallpaper on the other screen')}</div>
       <div class="now-meta">
-        {yielded.value ? 'Paused for other apps' : st ? `${st.width}×${st.height} · ${Math.round(st.fps)} fps${st.paused ? ' · paused' : ''}` : 'On the other screen'}
+        {thermalHold.value ? 'Paused: the laptop is working hard' : yielded.value ? 'Paused for other apps' : st ? `${st.width}×${st.height} · ${Math.round(st.fps)} fps${st.paused ? ' · paused' : ''}` : 'On the other screen'}
       </div>
       {ROLE === 'A' && sc && <div class="now-scene"><Icon name="sun" size={14} /> {sc.label}{nx ? ` · ${nx.label} in ${fmtIn(nx.inMs)}` : ''}</div>}
     </div>
@@ -129,7 +131,7 @@ function ControlCenter() {
             </div>
             <div class="home-side">
               {fun.value?.casting && <Card title="On the wall" icon="cast"><MediaRemote you="laptop" /></Card>}
-              <Card title="Now playing" icon="play"><NowPlaying /><UpNext /></Card>
+              <Card title="Now playing" icon="play" action={ROLE === 'A' ? <RotateSelect /> : null}><NowPlaying /><WallpaperSwitcher /><UpNext /></Card>
               <Card title="Apps" icon="globe"><AppTiles where="pc" launch={launchAppWithTap} /></Card>
               {fun.value && fun.value.pomo.phase !== 'idle' && <Card title="Study room" icon="calendar"><PomoCard /></Card>}
               <Card title="Door sign" icon="door"><DoorPicker /></Card>
@@ -178,6 +180,7 @@ function ControlCenter() {
           <div class="grid">
             <ServerPanel />
             <EngineCard />
+            <Card title="Keep it running" icon="thermo" class="span-2"><LazyHarden /></Card>
             <Card title="Connect a phone" icon="phone" class="span-2"><ConnectPhone /></Card>
             <Card title="Phone remote for Netflix / YouTube" icon="remote" class="span-2"><RemoteHelperSetup /></Card>
           </div>
@@ -249,6 +252,7 @@ function WallDisplay() {
       </aside>
       <footer class="w-foot">
         <div class="w-foot-l"><NowPlaying /><UpNext /></div>
+        <WallpaperSwitcher wall />
         <ScreenActions labels={false} />
       </footer>
     </div>
@@ -268,6 +272,15 @@ function ToolsTab() {
       <Card title="Laundry timers" icon="calendar"><m.TimersCard you="laptop" canWrite={w} /></Card>
       <Card title="Split & Settle" icon="people" class="span-2"><m.SplitCard you="laptop" canWrite={w} /></Card>
       <Card title="Sunrise alarm" icon="sun"><m.AlarmCard /></Card>
+      <Card title="Calendar" icon="calendar" class="span-2"><m.CalendarCard you="laptop" canWrite={w} /></Card>
     </div>
   );
+}
+
+/** System tab: the Week 8 card is its own chunk too. */
+let hardenMod: typeof import('./Harden') | null = null;
+function LazyHarden() {
+  const [m, setM] = useState(hardenMod);
+  useEffect(() => { if (!m) import('./Harden').then((x) => { hardenMod = x; setM(x); }); }, []);
+  return m ? <m.HardenCard /> : <p class="muted small">Loading…</p>;
 }

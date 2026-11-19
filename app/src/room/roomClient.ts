@@ -10,6 +10,7 @@ export interface Door { status: string; note: string; by: string | null; at: num
 export interface Drop { id: string; name: string; bytes: number; mime: string; byDev: string; byName: string; at: number; expiresAt: number }
 export interface ScreenState {
   mode: string; layer: string; cinema: boolean; night: boolean; showcase?: boolean; currentId: string | null;
+  stacked?: boolean; rotateMin?: number; thermal?: { state: string; guard: boolean };
   wallpapers: { id: string; name: string }[]; scene: string | null; at: number;
 }
 
@@ -219,17 +220,18 @@ export interface Timer { id: string; label: string; minutes: number; endsAt: num
 export interface Expense { id: string; kind: 'expense' | 'settle'; what: string; amount: number; paidBy: string; paidByName: string; split: string[]; splitNames: string[]; by: string; byDev: string; at: number }
 export interface Transfer { from: string; to: string; amount: number; fromName: string; toName: string; upi: string | null; vpa: string | null }
 export interface Alarm { on: boolean; time: string; days: number[]; rampMin: number; sound: boolean; by: string | null; dismissedAt: number; snoozeUntil: number; testAt?: number }
+export interface CalEvent { id: string; title: string; at: number; allDay: boolean; remind: number; reminded: boolean; by: string; byDev: string }
 export interface ToolsState {
   polls: Poll[]; timers: Timer[]; expenses: Expense[]; upi: Record<string, string>;
   money: { net: Record<string, number>; transfers: Transfer[]; total: number };
-  people: { key: string; name: string }[]; alarm: Alarm; serverNow: number;
+  people: { key: string; name: string }[]; alarm: Alarm; events?: CalEvent[]; serverNow: number;
 }
 export const tools = signal<ToolsState | null>(null);
 export let toolsSkew = 0;
 onServerMessage('tools', (m) => { toolsSkew = m.tools.serverNow - Date.now(); tools.value = m.tools; });
 /** A laundry timer just finished (every screen and phone chimes). */
-export const ding = signal<{ kind: string; label: string; by: string; byDev: string; at: number } | null>(null);
-onServerMessage('tools-ding', (m) => { ding.value = { ...m, at: Date.now() }; });
+export const ding = signal<{ kind: string; label: string; by: string; byDev: string; at: number; evAt?: number } | null>(null);
+onServerMessage('tools-ding', (m) => { ding.value = { ...m, evAt: m.at, at: Date.now() }; });
 export const serverNowT = () => Date.now() + toolsSkew;
 
 export const pollCreate = (q: string, options: string[], minutes = 0) => postJ('api/tools/poll', { q, options, minutes });
@@ -243,5 +245,7 @@ export const expenseDelete = (id: string) => req(`api/tools/expense/${id}`, { me
 export const settleRecord = (to: string, amount: number, from?: string) => postJ('api/tools/settle', { to, from, amount: (amount / 100).toFixed(2) });
 export const splitClear = () => postJ('api/tools/clear');
 export const upiSet = (vpa: string) => postJ('api/tools/upi', { vpa });
+export const eventAdd = (e: { title: string; at: number; allDay: boolean; remind: number }) => postJ('api/tools/event', e);
+export const eventDelete = (id: string) => req(`api/tools/event/${id}`, { method: 'DELETE' });
 export const alarmSet = (a: Partial<Alarm>) => postJ('api/tools/alarm', a);
 export const alarmDo = (action: 'dismiss' | 'snooze' | 'test') => postJ(`api/tools/alarm/${action}`);

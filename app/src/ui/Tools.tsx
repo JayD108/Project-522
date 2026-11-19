@@ -38,10 +38,23 @@ export function DingBanner({ enabled = true }: { enabled?: boolean }) {
   if (!shown) return null;
   return (
     <div class="banner ding" role="alert">
-      <Icon name="check" size={18} /><span><b>{shown.label}</b> is done{shown.by ? ` (${shown.by}'s)` : ''}. Time to collect it!</span>
+      {shown.kind === 'event'
+        ? <><Icon name="calendar" size={18} /><span><b>{shown.label}</b> {shown.evAt && shown.evAt > Date.now() + 30000 ? `starts at ${hhmm(shown.evAt)}` : 'is starting now'}.</span></>
+        : <><Icon name="check" size={18} /><span><b>{shown.label}</b> is done{shown.by ? ` (${shown.by}'s)` : ''}. Time to collect it!</span></>}
       <button onClick={() => setShown(null)}>OK</button>
     </div>
   );
+}
+
+export const hhmm = (t: number) => { const d = new Date(t); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
+/** "Today", "Tomorrow", "Fri 27 Nov" in this device's local time. */
+export function dayLabel(t: number, now = Date.now()) {
+  const d = new Date(t), n = new Date(now);
+  const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime()) / 86_400_000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  if (days === -1) return 'Yesterday';
+  return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 // ---------------------------------------------------------------- sunrise alarm
@@ -119,10 +132,19 @@ export function WallTools() {
   if (!t) return null;
   const timers = t.timers;
   const poll = t.polls.find((p) => !p.closed);
-  if (!timers.length && !poll) return null;
+  const now = serverNowT();
+  const soon = (t.events || []).filter((e) => e.at > now - (e.allDay ? 86_400_000 : 30 * 60000) && e.at < now + 7 * 86_400_000).slice(0, 3);
+  if (!timers.length && !poll && !soon.length) return null;
   const total = poll ? poll.options.reduce((a, o) => a + o.votes.length, 0) : 0;
   return (
     <div class="w-tools">
+      {soon.length > 0 && (
+        <div class="w-cal" aria-label="Coming up">
+          {soon.map((e) => (
+            <div key={e.id} class="w-ev"><Icon name="calendar" size={18} /><span class="w-ev-day">{dayLabel(e.at)}{e.allDay ? '' : ` ${hhmm(e.at)}`}</span><b>{e.title}</b></div>
+          ))}
+        </div>
+      )}
       {timers.map((x) => (
         <div key={x.id} class={`w-timer ${x.done ? 'done' : ''}`}><Icon name="calendar" size={18} /><b>{x.label}</b><span>{x.done ? 'Done!' : mmss(x.endsAt - serverNowT())}</span></div>
       ))}

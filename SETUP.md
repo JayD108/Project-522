@@ -89,6 +89,13 @@ A phone on the same Wi-Fi can then open `http://<laptop-Wi-Fi-IP>:8080/lan.html`
 - `npm run test:quick` works inside Crostini. It checks Node, packages, the build, unit tests and the server.
 - The browser tests need a Chrome binary *inside Linux*, and ChromeOS's own Chrome can't be driven from there. To run them anyway: `sudo apt-get install -y chromium` and then `npm test`. Linux Chromium has no GPU video, so its playback numbers say nothing about real performance.
 - The real hardware checks (HW decode, 1-hour loop, CPU, fan, Netflix side by side, hostel Wi-Fi) are a manual checklist in **docs/DEVICE-CHECKS.md**.
+- Soak (Week 8): `npm run soak` runs its own server + a headless dual-screen Chrome for 72 h (swaps every minute, room traffic, a snapshot every 5 cycles) and writes `data/soak/soak-<stamp>.csv/.json`. A short run: `npm run soak -- --minutes=30`. Pass = server and Chrome memory grow < 50 MB.
+
+### 6. Backups and logs (Week 8)
+- Every night at 03:30 (laptop time) the server writes a consistent copy of the database to `data/backups/jharokha-<date>-<time>.sqlite` and keeps the newest 7. System tab → *Keep it running* → *Snapshot now* takes one by hand.
+- Where: the data folder, which is `~/.local/share/jharokha/` for the `jharokha` service on the laptop (`JHK_DATA`) and `data/` for `npm start` in the repo. The System card shows the exact folder.
+- **Restore** a snapshot (service): `D=~/.local/share/jharokha; systemctl --user stop jharokha && cp $D/backups/<file>.sqlite $D/jharokha.sqlite && rm -f $D/jharokha.sqlite-wal $D/jharokha.sqlite-shm && systemctl --user start jharokha`.
+- Server log: System tab → *Server log* (the last 1000 lines), or `<data folder>/logs/jharokha.log` (rotates at 1 MB, 3 old files kept). `journalctl --user -u jharokha` still has everything too.
 
 ---
 
@@ -100,4 +107,6 @@ A phone on the same Wi-Fi can then open `http://<laptop-Wi-Fi-IP>:8080/lan.html`
 | `/app/` says "App not built yet" | `npm run build` |
 | Second screen stays black / "One more tap" banner | Tap **Open on monitor**. Allow pop-ups for the site if Chrome blocked it |
 | "Chrome cannot decode this file" / AV1 refused | Re-encode with `tools/encode.sh` (H.264) |
+| Wallpaper paused, "the laptop is working hard" | Thermal guard: CPU pressure stayed serious/critical for 20 s. It plays again after 60 s of normal pressure. Turn it off in System → Keep it running |
+| "Both layers are on the other screen" banner | Swaps got slow, so Jharokha stacked the layers. Press **Back to swapping** (or turn auto-stack off in System → Keep it running) |
 | Browser tests show SKIP | No Chrome found. Set `CHROME_PATH=/path/to/chrome`, or install Chromium |
