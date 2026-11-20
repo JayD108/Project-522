@@ -43,6 +43,8 @@ const HOST = process.env.HOST || '0.0.0.0';
 const STARTED = Date.now();
 const CHECKPOINT_MS = 5 * 60 * 1000;
 const VITALS_MS = 2000;
+const API_VERSION = 1;                         // bump when a route or WebSocket message changes shape (Android app checks it)
+const SERVER_VERSION = JSON.parse(fs.readFileSync(path.join(HERE, 'package.json'), 'utf8')).version;
 const CROSTINI_NET = /^100\.115\.92\./;          // ChromeOS ↔ Linux container bridge: phones can't use it
 
 // ------------------------------------------------------------------ SQLite (WAL, checkpoint every 5 min)
@@ -109,7 +111,7 @@ const tunnel = createTunnel({ port: PORT, kvGet, kvSet, log: (m) => console.log(
 /** Came through the Cloudflare tunnel: cloudflared connects from 127.0.0.1 with the public *.trycloudflare.com Host. */
 const isTunnelReq = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip) && /\.trycloudflare\.com$/i.test(hostName(req.headers.host || ''));
 // Strangers arriving over the internet may only reach the join flow (and the files the phone page needs).
-const TUNNEL_OPEN = [/^\/join$/, /^\/api\/(me|join|leave)$/, /^\/app\/(room\.html|manifest\.webmanifest|registerSW\.js|sw\.js|workbox-[\w-]+\.js|icon-\d+\.png)$/, /^\/app\/assets\//];
+const TUNNEL_OPEN = [/^\/join$/, /^\/api\/(me|join|leave|pair)$/, /^\/app\/(room\.html|manifest\.webmanifest|registerSW\.js|sw\.js|workbox-[\w-]+\.js|icon-\d+\.png)$/, /^\/app\/assets\//];
 /** Phones: has any device outside Linux ever reached us? (the "QR does nothing" diagnosis) */
 let lastOutside = kvGet('lastOutside');   // { ip, host, at, ua }
 const limitApi = makeLimiter(Number(process.env.JHK_RATE_PER_MIN || 240));   // per device (or IP) for non-owners
@@ -383,6 +385,18 @@ app.post('/api/pair/new', { preHandler: needOwner }, async (req) => {
   const code = access.newPairCode(req.who);
   return { code, url: `http://localhost:${PORT}/app/?pair=${code}`, expiresInS: 600 };
 });
+// The owner's Android controller app: a QR with this server's address + a one-time 32-hex code (10 min).
+// The app trades it for an owner token via POST /api/pair (open over the internet link; same-Wi-Fi rule still applies).
+app.post('/api/pair/phone', { preHandler: needOwner }, async (req) => {
+  const code = access.newPairCode(req.who, { phone: true });
+  const j = joinInfo();
+  const base = j.source === 'tunnel' ? new URL(j.url).origin : `http://${j.host}`;
+  const payload = `jharokha://pair?u=${encodeURIComponent(base)}&c=${code}`;
+  const svg = await QRCode.toString(payload, { type: 'svg', margin: 4, errorCorrectionLevel: 'M' });
+  return { code, base, payload, svg, source: j.source, expiresInS: 600 };
+});
+// For the Android app: which API it is talking to (it warns when it is older or newer than the server).
+app.get('/api/version', { preHandler: needMember }, async () => ({ api: API_VERSION, build: appBuild(), server: SERVER_VERSION }));
 app.post('/api/pair', async (req, reply) => {
   if (!access) return noAccess(reply);
   if (!limitJoin('pair:' + req.clientIp)) return reply.code(429).send({ error: 'Too many tries: wait a minute' });

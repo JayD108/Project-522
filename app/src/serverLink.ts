@@ -186,4 +186,6 @@ export async function getJ<T = any>(path: string): Promise<T> {
 export const getBackups = () => getJ<{ list: Snapshot[]; last: any; nextInMs: number; keep: number; at: string }>('api/system/backups');
 export const takeBackup = () => post('api/system/backups', {});
 export const getLogs = (level?: string, n = 150) => getJ<{ lines: LogLine[]; files: { name: string; bytes: number }[]; ring: number }>(`api/system/logs?n=${n}${level ? `&level=${level}` : ''}`);
+/** A one-time QR for the owner's Android controller app (10 min). */
+export const pairPhone = () => post('api/pair/phone', {}) as Promise<{ code: string; base: string; payload: string; svg: string; source: string; expiresInS: number }>;
 export const setQuiet = (q: { enabled?: boolean; start?: string; end?: string }) => post('api/quiet', q);

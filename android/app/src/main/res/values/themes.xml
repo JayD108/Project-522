@@ -1,0 +1,15 @@
+<resources>
+    <!-- Compose draws everything; this only sets the window colours before the first frame (the bg colour in styles.css). -->
+    <style name="Theme.JharokhaOwner" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+    </style>
+    <!-- The share sheet target: a see-through window, Compose draws the dialog. -->
+    <style name="Theme.JharokhaOwner.Dialog" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
+</resources>

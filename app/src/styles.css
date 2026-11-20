@@ -181,6 +181,9 @@ button.icon { padding: 6px 10px; background: transparent; }
 .pair-card { border-color: var(--amber); }
 .pair-card p { margin: 8px 0 0; }
 .kill-row, .quiet-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.pair-phone-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.pair-qr { background: #fff; padding: 8px; border-radius: 8px; width: min(320px, 80vw); margin: 12px auto; }
+.pair-qr svg { display: block; width: 100%; height: auto; }
 .kill { border-color: var(--bad); color: var(--bad); font-weight: 600; }
 .kill.on { background: var(--bad); color: #1a0806; }
 .quiet-row input[type=time] { font: inherit; font-size: 14px; color: var(--ink); background: #201d1a; border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }

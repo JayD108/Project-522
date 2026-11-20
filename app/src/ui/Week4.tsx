@@ -1,6 +1,7 @@
 // Week 4 UI: approval tray (pops up on Layer 2), Access card (devices, kill switch, quiet hours, audit), Pair notice.
 import { useState } from 'preact/hooks';
-import { accessState, decide, me, server, setKill, setNetGuard, setQuiet, type Device } from '../serverLink';
+import { accessState, decide, me, pairPhone, server, setKill, setNetGuard, setQuiet, type Device } from '../serverLink';
+import { Modal } from './Modal';
 import { toast } from '../state';
 import { castDecide, fun } from '../room/roomClient';
 
@@ -120,6 +121,7 @@ export function AccessCard() {
           ))}
         </tbody>
       </table>
+      <PairPhoneRow />
       <h3 class="sub-h">Audit log</h3>
       <ul class="audit">
         {audit.map((e, i) => (
@@ -166,6 +168,26 @@ export function WhoCanConnect() {
       )}
       {n.trusted.length > 0 && (
         <div class="small muted">Also trusted: {n.trusted.map((t) => <span key={t} class="tag-t">{t} <button class="link-btn" onClick={() => run(setNetGuard({ untrust: t }))}>remove</button></span>)}</div>
+      )}
+    </div>
+  );
+}
+
+/** "Pair my phone": a QR the owner's Android controller app scans to become an owner device (one-time, 10 min). */
+export function PairPhoneRow() {
+  const [qr, setQr] = useState<null | { svg: string; base: string; source: string }>(null);
+  const open = () => run(pairPhone().then((r) => setQr(r)));
+  return (
+    <div class="pair-phone-row">
+      <button class="small-btn pair-phone-btn" onClick={open}>Pair my phone (Android app)</button>
+      <span class="small muted">One-time QR for the Jharokha Owner app. It works for 10 minutes.</span>
+      {qr && (
+        <Modal label="Pair the owner app" onClose={() => setQr(null)}>
+          <h2>Scan with the Jharokha Owner app</h2>
+          <div class="pair-qr" dangerouslySetInnerHTML={{ __html: qr.svg }} />
+          <p class="small muted">Address in the code: <b>{qr.base}</b>{qr.source !== 'tunnel' && ' (Wi-Fi address. If phones cannot reach the laptop, turn on internet sharing first.)'}</p>
+          <p class="small muted">Anyone who scans this becomes an owner. Close it once your phone is paired.</p>
+        </Modal>
       )}
     </div>
   );
